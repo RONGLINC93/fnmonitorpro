@@ -10,7 +10,8 @@ rem ============ 发布.bat ============
 rem 用途：构建安装包 -> 打版本标签 -> 推送标签 -> 创建 GitHub Release 并上传 fpk
 rem 用法：发布.bat            （版本号自动读取 manifest 的 version=）
 rem       发布.bat 2.17.0      （指定版本号）
-rem 依赖：gh（GitHub CLI，且需已 gh auth login）；未安装/未登录则只构建并提示手动发布
+rem 凭据：优先用 .env 中的 GITHUB_TOKEN（无需装 gh）；其次用 gh（需已登录）
+rem       两者都没有时只构建，并提示手动创建 Release
 rem 仓库: RONGLINC93/fnmonitor
 rem 结束：窗口 5 秒后自动关闭
 
@@ -37,19 +38,32 @@ set "DIRTY="
 for /f "delims=" %%s in ('git status --porcelain 2^>nul') do set "DIRTY=1"
 if defined DIRTY echo [提示] 存在未提交改动，建议先运行「推送.bat」再发布
 
-rem ---- 4. 检查 gh 及登录状态 ----
+rem ---- 4. 检查发布凭据：优先 .env 中的 Token，其次 gh ----
+set "HASTOK=0"
 set "HASGH=0"
+findstr /b /c:"GITHUB_TOKEN=" ".env" >nul 2>&1
+if not errorlevel 1 (
+  set "HASTOK=1"
+  echo [凭据] 使用 .env 中的 GITHUB_TOKEN
+) else (
+  echo [提示] .env 中未找到 GITHUB_TOKEN
+)
 where gh >nul 2>&1
 if not errorlevel 1 (
   gh auth status >nul 2>&1
-  if errorlevel 1 (
-    echo [警告] gh 已安装但未登录，自动发布将跳过。请先执行：gh auth login
-  ) else (
+  if not errorlevel 1 (
     set "HASGH=1"
+    echo [凭据] gh 已登录
+  ) else (
+    echo [提示] gh 已安装但未登录
   )
 ) else (
   echo [提示] 未安装 gh 命令行工具
 )
+
+rem ---- 4b. 生成 git 认证头（供标签推送用；token 不落盘、不进 URL）----
+set "AUTHCFG="
+if "%HASTOK%"=="1" for /f "usebackq delims=" %%b in (`python -c "import base64,io;t=[l.split('=',1)[1].strip() for l in io.open('.env',encoding='utf-8',errors='ignore') if l.strip().startswith('GITHUB_TOKEN=')];print(base64.b64encode(('x-access-token:'+t[0]).encode()).decode() if t else '')" 2^>nul`) do set AUTHCFG="-c" "http.https://github.com/.extraheader=AUTHORIZATION: basic %%b"
 
 echo.
 echo === 1/3 构建安装包 ===
@@ -70,7 +84,7 @@ echo === 2/3 创建并推送版本标签 v%VER% ===
 set "TAGOK=1"
 git tag -a "v%VER%" -m "v%VER%"
 if errorlevel 1 echo [提示] 本地标签已存在，改为直接推送该标签
-git push origin "v%VER%"
+git !AUTHCFG! push origin "v%VER%"
 if errorlevel 1 (
   echo [警告] 标签推送失败（若远程已存在该标签可忽略）
   set "TAGOK=0"
@@ -78,18 +92,29 @@ if errorlevel 1 (
   echo [完成] 标签 v%VER% 已在远程
 )
 
-rem ---- 6. 创建 Release 并上传资产 ----
+rem ---- 6. 创建 Release 并上传资产（优先用 .env Token，其次 gh）----
 echo.
 echo === 3/3 创建 GitHub Release 并上传安装包 ===
 set "RELOK=0"
+if "%HASTOK%"=="1" (
+  python "%~dp0_gh_release.py" %VER%
+  if errorlevel 1 (
+    echo [警告] 通过 .env Token 发布失败，可改用 gh 或网页手动创建
+  ) else (
+    set "RELOK=1"
+  )
+  goto :summary
+)
 if "%HASGH%"=="0" (
-  echo [跳过] 未安装 gh 或未登录，无法自动创建 Release
-  echo        安装：winget install GitHub.cli   然后：gh auth login
-  echo        或手动创建：https://github.com/%REPO%/releases/new
+  echo [跳过] 无可用凭据（.env 无 GITHUB_TOKEN，且 gh 未安装/未登录）
+  echo        办法一：在 .env 中配置 GITHUB_TOKEN=xxx（需 repo 权限）
+  echo        办法二：winget install GitHub.cli 然后 gh auth login
+  echo        办法三：手动创建 https://github.com/%REPO%/releases/new
   echo        需选择标签 v%VER% 并上传：
   echo          %PREFIX%-%VER%-x86.fpk
   echo          %PREFIX%-%VER%-arm.fpk
-) else (
+  goto :summary
+)
   gh release view "v%VER%" --repo %REPO% >nul 2>&1
   if errorlevel 1 (
     rem Release 不存在 -> 创建并上传两个资产
@@ -114,18 +139,15 @@ if "%HASGH%"=="0" (
 
 rem ---- 7. 结果汇总 ----
 echo.
+:summary
+echo.
 echo ============== 发布结果 ==============
-if "%HASGH%"=="1" (
-  if "%RELOK%"=="1" (
-    echo [成功] v%VER% 发布完成：标签 + Release + 安装包均已就绪
-    echo        应用内「检查更新」现已可用
-  ) else (
-    echo [未完成] Release 未成功创建，请查看上方错误或手动创建
-  )
+if "%RELOK%"=="1" (
+  echo [成功] v%VER% 发布完成：标签 + Release + 安装包均已就绪
 ) else (
   echo [未完成] 仅完成本地构建
   if "%TAGOK%"=="1" (echo        标签 v%VER% 已推送) else (echo        标签未推送成功)
-  echo        Release 需 gh 工具或网页手动创建，见上方说明
+  echo        Release 未创建，见上方说明
 )
 echo =======================================
 echo.

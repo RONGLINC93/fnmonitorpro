@@ -9,6 +9,16 @@ rem 用法：双击运行；或命令行传入提交信息：推送.bat "自定�
 rem 注意：git rebase 要求工作区干净，故必须「先提交、再变基、后推送」
 rem 结束：窗口 5 秒后自动关闭
 
+rem ---- 读取 .env 中的 Token，生成 git 认证头（token 不落盘、不写进 remote URL）----
+set "AUTHCFG="
+for /f "usebackq delims=" %%b in (`python -c "import base64,io;t=[l.split('=',1)[1].strip() for l in io.open('.env',encoding='utf-8',errors='ignore') if l.strip().startswith('GITHUB_TOKEN=')];print(base64.b64encode(('x-access-token:'+t[0]).encode()).decode() if t else '')" 2^>nul`) do set "B64=%%b"
+if defined B64 (
+  set AUTHCFG="-c" "http.https://github.com/.extraheader=AUTHORIZATION: basic !B64!"
+  echo [凭据] 使用 .env 中的 GITHUB_TOKEN
+) else (
+  echo [凭据] .env 中无 GITHUB_TOKEN，使用系统凭据
+)
+
 rem ---- 校验是否为 git 仓库 ----
 git rev-parse --is-inside-work-tree >nul 2>&1
 if errorlevel 1 (
@@ -46,7 +56,7 @@ if errorlevel 1 (
 
 echo.
 echo === 2/4 变基到远程最新（pull --rebase）===
-git pull --rebase origin main
+git !AUTHCFG! pull --rebase origin main
 if errorlevel 1 (
   echo [错误] 拉取/变基失败。若有冲突请手动处理：
   echo        查看：  git status
@@ -57,7 +67,7 @@ if errorlevel 1 (
 
 echo.
 echo === 3/4 推送到 origin/main ===
-git push origin main
+git !AUTHCFG! push origin main
 if errorlevel 1 (
   echo [错误] git push 失败
   goto :theend
