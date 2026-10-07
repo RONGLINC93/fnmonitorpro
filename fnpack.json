@@ -34,13 +34,13 @@
       "packages": {
        "x86": {
         "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/fnmonitorpro-2.17.0-x86.fpk",
-        "sha256": "14a96c2b92d4634f44b7f013ff580a79e4298bd6efb42041091a0dcf45c3c8d8",
-        "size": 441356
+        "sha256": "e7fd37b9dd5194d642ad01d2413a12c8d2897d29f96f4230f90f072dc3940628",
+        "size": 441603
        },
        "arm": {
         "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/fnmonitorpro-2.17.0-arm.fpk",
-        "sha256": "929bc35ea0fff02824a6094bd06711214e33db463c05107293b7ef6c7c85bd40",
-        "size": 441356
+        "sha256": "48c6047b7cf99c83e1685fb7a32306c7c01e913d97624a4e4f0542416aa025f3",
+        "size": 441603
        }
       }
      },
