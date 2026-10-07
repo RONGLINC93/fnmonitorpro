@@ -27,7 +27,24 @@
    "is_docker": false,
    "service_port": "8778",
    "releases": {
-   "2.16.4": {
+     "2.17.0": {
+      "changelog": "v2.17.0 更名「飞牛监控pro」（应用名/图标 PRO 角标/应用 ID fnmonitorpro）、默认端口 8777→8778、新增风扇温度曲线控制（可视化拐点编辑+后台守护调速）、风扇控制交互重构（下拉选模式+统一保存按钮+实时检测+五档卡片尺寸+风扇重命名）、交还 BIOS 升级为三级降级并支持一键交还所有风扇",
+      "updated_at": "2026-10-07T00:00:00+08:00",
+      "os_min_version": "0.9.0",
+      "packages": {
+       "x86": {
+        "download_url": "https://github.com/RONGLINC93/fnmonitor/releases/download/2.17.0/fnmonitorpro-2.17.0-x86.fpk",
+        "sha256": "14a96c2b92d4634f44b7f013ff580a79e4298bd6efb42041091a0dcf45c3c8d8",
+        "size": 441356
+       },
+       "arm": {
+        "download_url": "https://github.com/RONGLINC93/fnmonitor/releases/download/2.17.0/fnmonitorpro-2.17.0-arm.fpk",
+        "sha256": "929bc35ea0fff02824a6094bd06711214e33db463c05107293b7ef6c7c85bd40",
+        "size": 441356
+       }
+      }
+     },
+     "2.16.4": {
     "changelog": "v2.16.4<br>① 修复「时间·农历」显示与真实农历不同步：公历转农历查表算法的三处错误——年份回补误用下一年天数（闰月年后日期错 1～2 个月，如 2025-06-25 误显四月廿九、实为六月初一）、月份回补同理且闰月标志未复位（闰月后月份全被错标为「闰」，出现闰七月/闰腊月）、日干支常数错误（+50 应为 +17，日柱长期算错）；已经 1950–2048 共 36000 天逐日连续性自检与权威万年历对照（2026-10-06 = 丙午年八月廿六·癸丑日）",
     "updated_at": "2026-10-06T20:00:00+08:00",
     "os_min_version": "0.9.0",
