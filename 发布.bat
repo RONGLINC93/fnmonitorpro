@@ -17,7 +17,7 @@ if not defined VER (
 )
 if not defined VER (
   echo [错误] 无法从 manifest 读取版本号，请显式指定：发布.bat 2.17.0
-  exit /b 1
+  goto :theend
 )
 echo [信息] 发布版本：%VER%
 echo [信息] 目标仓库：RONGLINC93/fnmonitor
@@ -39,12 +39,12 @@ echo === 1/4 构建安装包 ===
 powershell -NoProfile -ExecutionPolicy Bypass -File "build.ps1"
 if errorlevel 1 (
   echo [错误] 构建失败
-  exit /b 1
+  goto :theend
 )
 
 if not exist "fnmonitorpro-%VER%-x86.fpk" (
   echo [错误] 未找到构建产物 fnmonitorpro-%VER%-x86.fpk
-  exit /b 1
+  goto :theend
 )
 
 rem ---- 4. 打标签并推送 ----
@@ -57,7 +57,7 @@ if errorlevel 1 (
   git push origin "v%VER%"
   if errorlevel 1 (
     echo [错误] 标签推送失败
-    exit /b 1
+    goto :theend
   )
   echo [完成] 标签 v%VER% 已推送
 )
@@ -106,4 +106,11 @@ echo.
 echo 后续可选：
 echo   1) 把 fnpack.json 中该版本的 download_url / sha256 / size 更新为新资产
 echo   2) 若要让应用内"发现新版本"提示生效，确认 Release 为正式版（非 pre-release）
+
+rem ---- 统一收尾：5 秒倒计时后自动关闭窗口 ----
+:theend
+echo.
+echo 窗口将在 5 秒后自动关闭...
+timeout /t 5 >nul 2>&1
+if errorlevel 1 ping -n 6 127.0.0.1 >nul
 exit /b 0
