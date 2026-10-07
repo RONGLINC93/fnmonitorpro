@@ -113,7 +113,7 @@ def main():
     except Exception:
         pass
 
-    for p in pkgs:
+    for p in pkgs + [x for x in extras if os.path.exists(x)]:
         name = os.path.basename(p)
         if name in existing:
             print("[资产] 已存在同名资产，跳过：" + name)

@@ -17,7 +17,7 @@
    "categories": [
     "系统工具"
    ],
-   "icon_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/ICON_256.PNG",
+   "icon_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/v2.17.0/ICON_256.PNG",
    "readme_url": "https://raw.githubusercontent.com/RONGLINC93/fnmonitorpro/main/README.md",
      "bug_report_url": "https://github.com/RONGLINC93/fnmonitorpro/issues",
    "maintainer": "RONGLINC93",
@@ -33,14 +33,14 @@
       "os_min_version": "0.9.0",
       "packages": {
        "x86": {
-        "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/fnmonitorpro-2.17.0-x86.fpk",
-        "sha256": "e7fd37b9dd5194d642ad01d2413a12c8d2897d29f96f4230f90f072dc3940628",
-        "size": 441603
+        "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/v2.17.0/fnmonitorpro-2.17.0-x86.fpk",
+        "sha256": "d40772a41546a7a29adb42998c011c5be8e2dcef6fdbb67a8d9adbba7e35313f",
+        "size": 441597
        },
        "arm": {
-        "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/fnmonitorpro-2.17.0-arm.fpk",
-        "sha256": "48c6047b7cf99c83e1685fb7a32306c7c01e913d97624a4e4f0542416aa025f3",
-        "size": 441603
+        "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/v2.17.0/fnmonitorpro-2.17.0-arm.fpk",
+        "sha256": "624ee2e582659cfe4a54e9ba14b65b7e192edb8e63b741a487e6c8b6c8c8f9bf",
+        "size": 441597
        }
       }
      },
