@@ -7,12 +7,13 @@ rem ============ 推送.bat ============
 rem 用途：提交本地改动 -> 变基到远程最新 -> 推送到 origin/main
 rem 用法：双击运行；或命令行传入提交信息：推送.bat "自定义提交信息"
 rem 注意：git rebase 要求工作区干净，故必须「先提交、再变基、后推送」
+rem 结束：窗口 5 秒后自动关闭
 
 rem ---- 校验是否为 git 仓库 ----
 git rev-parse --is-inside-work-tree >nul 2>&1
 if errorlevel 1 (
   echo [错误] 当前目录不是 git 仓库
-  exit /b 1
+  goto :theend
 )
 
 rem ---- 提交信息：优先用命令行参数，否则自动生成（带 manifest 版本号）----
@@ -27,7 +28,7 @@ echo === 1/4 暂存并提交本地改动 ===
 git add -A
 if errorlevel 1 (
   echo [错误] git add 失败
-  exit /b 1
+  goto :theend
 )
 
 git diff --cached --quiet
@@ -36,7 +37,7 @@ if errorlevel 1 (
   git commit -m "!MSG!"
   if errorlevel 1 (
     echo [错误] git commit 失败
-    exit /b 1
+    goto :theend
   )
   set "HAVE_COMMIT=1"
 ) else (
@@ -51,7 +52,7 @@ if errorlevel 1 (
   echo        查看：  git status
   echo        解决后：git add -A ^&^& git rebase --continue
   echo        放弃：  git rebase --abort
-  exit /b 1
+  goto :theend
 )
 
 echo.
@@ -59,7 +60,7 @@ echo === 3/4 推送到 origin/main ===
 git push origin main
 if errorlevel 1 (
   echo [错误] git push 失败
-  exit /b 1
+  goto :theend
 )
 
 echo.
@@ -69,4 +70,11 @@ if defined HAVE_COMMIT (
 ) else (
   echo [完成] 已同步到远程最新
 )
+
+rem ---- 统一收尾：5 秒倒计时后自动关闭窗口 ----
+:theend
+echo.
+echo 窗口将在 5 秒后自动关闭...
+timeout /t 5 >nul 2>&1
+if errorlevel 1 ping -n 6 127.0.0.1 >nul
 exit /b 0
