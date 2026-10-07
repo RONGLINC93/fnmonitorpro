@@ -8,7 +8,7 @@ rem 用途：构建安装包 -> 打版本标签 -> 推送标签 -> 创建 GitHub
 rem 用法：发布.bat            （版本号自动读取 manifest 的 version=）
 rem       发布.bat 2.17.0      （指定版本号）
 rem 依赖：gh（GitHub CLI，用于创建 Release / 上传资产；未安装则跳过并提示手动操作）
-rem仓库：https://github.com/RONGLINC93/fnmonitor
+rem 仓库: RONGLINC93/fnmonitor
 
 rem ---- 1. 确定版本号 ----
 set "VER=%~1"
