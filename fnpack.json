@@ -4,7 +4,7 @@
   "name": "RONGLINC93 应用源",
   "author": "RONGLINC93",
   "homepage": "https://github.com/RONGLINC93/fnmonitor",
-  "description": "飞牛监控pro fnmonitor 发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。基于原作者 Misite齊（@MisiteQ）的 fnmonitor 项目修改。"
+  "description": "飞牛监控pro fnmonitor 发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。自 2.17.0 起由 RONGLINC93 接手修改与维护（2.16.4 及更早版本由原作者 Misite齊 开发维护），基于其开源项目修改并致谢原作者。"
  },
  "apps": {
   "fnmonitorpro": {
