@@ -3,7 +3,7 @@
 # fnmonitor 升级后处理
 # 重新创建桌面 UI 软链接并修复可执行权限
 # ============================================================
-APP_BASE="/var/apps/${TRIM_APPNAME:-fnmonitor}"
+APP_BASE="/var/apps/${TRIM_APPNAME:-fnmonitorpro}"
 APP_DEST="${TRIM_APPDEST}"
 if [ -d "${APP_DEST}/ui" ] && [ ! -e "${APP_BASE}/ui" ]; then
     ln -s "${APP_DEST}/ui" "${APP_BASE}/ui" 2>/dev/null || true

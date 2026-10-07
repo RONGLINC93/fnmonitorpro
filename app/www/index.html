@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>飞牛监控</title>
+<title>飞牛监控pro</title>
 <style>
 /* ============================================================
    fnMonitor v2.8.0 设计系统 —— 现代 NAS 仪表盘风格
@@ -214,7 +214,9 @@ main section[data-panel="ports"]{order:1}
 .panel:hover{box-shadow:var(--shadow-md);border-color:color-mix(in srgb,var(--accent) 26%,var(--border))}
 @keyframes bn-enter{0%{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .panel-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  padding:13px 18px 12px;border-bottom:1px solid var(--border);margin-bottom:0}
+  padding:13px 18px 12px;border-bottom:1px solid var(--border);margin-bottom:0;cursor:grab}
+.panel-head:active{cursor:grabbing}
+.panel-head button{cursor:pointer}
 .panel-title{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;margin-right:auto;min-width:0}
 main section[data-panel]{--p-acc:var(--accent)}
 .panel-title::before{content:"";width:8px;height:8px;border-radius:3px;background:var(--p-acc,var(--accent));display:inline-block;flex:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--p-acc,var(--accent)) 16%,transparent)}
@@ -481,10 +483,54 @@ table.listen-tbl td:nth-child(2){max-width:230px;overflow-wrap:break-word;white-
 .dimm .d-mfr{font-size:11px;color:var(--muted)}
 .dimm .d-spec{font-size:10px;color:var(--dim)}
 .fan-card{padding:14px}
+/* 风扇卡片尺寸：巨大(xxl) / 超大(xl) / 大(lg) / 中(md,默认) / 小(sm) */
+.sens-grid.fs-xxl{grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:18px}
+.sens-grid.fs-xxl .fan-card{padding:22px}
+.sens-grid.fs-xxl .f-name{font-size:17px}
+.sens-grid.fs-xxl .f-head{gap:12px;margin-bottom:14px}
+.sens-grid.fs-xxl .f-rpm{font-size:14px}
+.sens-grid.fs-xxl .fc-cur-pct{font-size:22px}
+.sens-grid.fs-xxl .fc-row{font-size:15px;margin:8px 0}
+.sens-grid.fs-xxl .fc-pt{font-size:15px;margin:6px 0}
+.sens-grid.fs-xl{grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+.sens-grid.fs-xl .fan-card{padding:19px}
+.sens-grid.fs-xl .f-name{font-size:15.5px}
+.sens-grid.fs-xl .f-head{gap:11px;margin-bottom:12px}
+.sens-grid.fs-xl .f-rpm{font-size:13px}
+.sens-grid.fs-xl .fc-cur-pct{font-size:19px}
+.sens-grid.fs-xl .fc-row{font-size:14px;margin:7px 0}
+.sens-grid.fs-xl .fc-pt{font-size:14px;margin:5px 0}
+.sens-grid.fs-lg{grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.sens-grid.fs-lg .fan-card{padding:16px}
+.sens-grid.fs-lg .f-name{font-size:14.5px}
+.sens-grid.fs-lg .f-head{gap:10px;margin-bottom:10px}
+.sens-grid.fs-sm{grid-template-columns:repeat(auto-fit,minmax(152px,1fr));gap:8px}
+.sens-grid.fs-sm .fan-card{padding:9px}
+.sens-grid.fs-sm .f-head{gap:5px;margin-bottom:5px;flex-wrap:wrap}
+.sens-grid.fs-sm .f-name{font-size:11.5px}
+.sens-grid.fs-sm .f-rpm{font-size:10.5px}
+.sens-grid.fs-sm .f-ctl{gap:5px}
+.sens-grid.fs-sm .fc-cur-sub,.sens-grid.fs-sm .fc-hint,.sens-grid.fs-sm .fc-pts,.sens-grid.fs-sm .fc-target{display:none}
+.sens-grid.fs-sm .fc-row{margin:4px 0;font-size:12px}
+.sens-grid.fs-sm .fc-row>span{min-width:0}
+.f-size{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-left:10px;user-select:none;white-space:nowrap}
+/* 分段控件：外层圆角胶囊容器，选中项为内嵌药丸高亮 */
+.f-size-btns{display:inline-flex;gap:3px;background:var(--card2);border:1px solid var(--border);border-radius:999px;padding:3px}
+.f-size-btn{background:transparent;color:var(--muted);border:none;border-radius:999px;padding:3px 12px;font-size:11.5px;cursor:pointer;font-family:inherit;transition:background-color .15s,color .15s}
+.f-size-btn:hover{color:var(--text)}
+.f-size-btn.on{background:var(--accent);color:#fff;font-weight:600}
 .fan-card .f-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-.fan-card .f-name{font-size:13px;font-weight:700;flex:1}
+.fan-card .f-name{font-size:13px;font-weight:700;flex:1;cursor:text;border-bottom:1px dashed transparent}
+.fan-card .f-name:hover{border-bottom-color:var(--border)}
+.f-rename-in{position:fixed;z-index:10000;background:var(--card);color:var(--text);border:1px solid var(--accent);
+  border-radius:6px;padding:3px 7px;font-size:13px;font-weight:700;box-shadow:var(--shadow-md);outline:none}
+.fd-custom{font-style:normal;font-size:10px;color:var(--emerald);border:1px solid var(--emerald);border-radius:999px;padding:0 6px;margin-left:6px}
 .fan-card .f-rpm{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .fan-card .f-rpm.zero{color:var(--red)}
+.fan-card .f-mode{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;border:1px solid var(--border);color:var(--muted);white-space:nowrap}
+.fan-card .f-mode.auto{color:var(--emerald);border-color:var(--emerald)}
+.fan-card .f-mode.manual{color:var(--accent);border-color:var(--accent)}
+.fan-card .f-mode.full{color:var(--amber);border-color:var(--amber)}
 .fan-card input[type=range]{width:100%;accent-color:var(--accent);margin:6px 0}
 .fan-card .f-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .fan-card .f-msg{font-size:11px;color:var(--emerald);margin-top:4px}
@@ -600,7 +646,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <aside class="sidebar">
   <div class="brand">
     <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 13 7 9 11 13 17 7 21 11"/><polyline points="3 19 7 15 11 19 17 13 21 17" opacity=".5"/></svg>
-    <span>飞牛监控<span class="b-sub">FNNAS MONITOR</span></span>
+    <span>飞牛监控pro<span class="b-sub">FNNAS MONITOR</span></span>
   </div>
   <button class="side-toggle" id="side-toggle" title="收起侧边栏" aria-label="收起 / 展开侧边栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
   <nav class="side-nav">
@@ -619,7 +665,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 <header class="topbar">
   <div class="m-brand">
     <svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 13 7 9 11 13 17 7 21 11"/><polyline points="3 19 7 15 11 19 17 13 21 17" opacity=".5"/></svg>
-    飞牛监控
+    飞牛监控pro
   </div>
   <div class="sysinfo" id="sysinfo"><span>主机: <b>--</b></span><span>系统: <b>--</b></span><span>内核: <b>--</b></span><span>运行: <b>--</b></span><span class="ip-chips" id="sys-ips" title="本机 IP 地址"></span></div>
   <div class="top-actions">
@@ -841,8 +887,8 @@ body{display:flex;flex-direction:column;min-height:100vh}
     <div class="settings">
       <div class="set-group">服务</div>
       <div class="set-row" data-mod="m-set-port">
-        <div class="s-label"><b>服务监听端口</b><div class="s-sub">修改后需在 应用中心 → 飞牛监控 中「重启」应用生效；并需在飞牛防火墙放行新端口</div></div>
-        <input id="set-port" class="inp" type="number" min="1" max="65535" placeholder="8777">
+        <div class="s-label"><b>服务监听端口</b><div class="s-sub">修改后需在 应用中心 → 飞牛监控pro 中「重启」应用生效；并需在飞牛防火墙放行新端口</div></div>
+        <input id="set-port" class="inp" type="number" min="1" max="65535" placeholder="8778">
         <button class="op-btn" onclick="saveConfig()">保存</button>
         <button class="mod-hide" data-mod="m-set-port" title="隐藏此模块">✕</button>
       </div>
@@ -871,7 +917,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
         <button class="mod-hide" data-mod="m-set-weather" title="隐藏此模块">✕</button>
       </div>
       <div class="set-row" data-mod="m-set-openmode">
-        <div class="s-label"><b>飞牛桌面打开方式</b><div class="s-sub">点击飞牛桌面「飞牛监控」图标时的打开方式：<b>飞牛窗口</b> = 在 fnOS 桌面内嵌窗口中打开；<b>独立网页</b> = 直接在浏览器新标签页打开（完整浏览器能力：全屏 / 下载 / 插件，不弹出内嵌窗口）。保存时自动写入桌面入口并刷新应用中心——<b>刷新飞牛桌面页面（F5）或重新登录后生效</b>，之后点击桌面图标即按新模式直接打开。若桌面尚未刷新仍弹出内嵌窗口，窗口内会显示引导页可一键转跳浏览器。当前已在飞牛窗口内打开，可先点下方链接立即在新标签页试用：<a href="/" target="_blank" rel="noopener">立即在新标签页打开 ↗</a></div></div>
+        <div class="s-label"><b>飞牛桌面打开方式</b><div class="s-sub">点击飞牛桌面「飞牛监控pro」图标时的打开方式：<b>飞牛窗口</b> = 在 fnOS 桌面内嵌窗口中打开；<b>独立网页</b> = 直接在浏览器新标签页打开（完整浏览器能力：全屏 / 下载 / 插件，不弹出内嵌窗口）。保存时自动写入桌面入口并刷新应用中心——<b>刷新飞牛桌面页面（F5）或重新登录后生效</b>，之后点击桌面图标即按新模式直接打开。若桌面尚未刷新仍弹出内嵌窗口，窗口内会显示引导页可一键转跳浏览器。当前已在飞牛窗口内打开，可先点下方链接立即在新标签页试用：<a href="/" target="_blank" rel="noopener">立即在新标签页打开 ↗</a></div></div>
         <select id="set-open-mode" class="inp" style="max-width:200px">
           <option value="url">浏览器新标签页（独立网页，默认）</option>
           <option value="iframe">飞牛窗口内打开（iframe）</option>
@@ -959,7 +1005,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 
       <div class="set-group">数据</div>
       <div class="set-row" data-mod="m-set-datadir">
-        <div class="s-label"><b>数据保存目录（持久化）</b><div class="s-sub">历史数据 / 界面设置的本地保存位置。默认 = 软件安装数据目录下的 <b>localdata</b> 文件夹；可改为飞牛存储空间路径（如 /vol1/监控数据）。留空 = 默认 localdata。保存后需在应用中心重启「飞牛监控」生效</div></div>
+        <div class="s-label"><b>数据保存目录（持久化）</b><div class="s-sub">历史数据 / 界面设置的本地保存位置。默认 = 软件安装数据目录下的 <b>localdata</b> 文件夹；可改为飞牛存储空间路径（如 /vol1/监控数据）。留空 = 默认 localdata。保存后需在应用中心重启「飞牛监控pro」生效</div></div>
         <input id="set-data-dir" class="inp" type="text" placeholder="留空=默认 localdata 目录" style="max-width:360px" oninput="dataDirChanged()">
         <button class="op-btn" id="btn-dd-save" onclick="saveConfig()">保存</button>
         <button class="op-btn" id="btn-dd-cancel" onclick="cancelDataDir()" style="display:none" title="还原为已保存的目录">取消</button>
@@ -1020,13 +1066,13 @@ body{display:flex;flex-direction:column;min-height:100vh}
         <button class="mod-hide" data-mod="m-set-update" title="隐藏此模块">✕</button>
       </div>
       <div class="set-row" data-mod="m-set-about">
-        <div class="s-label"><b>关于 飞牛监控（fnMonitor）</b><div class="s-sub">
+        <div class="s-label"><b>关于 飞牛监控pro（fnMonitor）</b><div class="s-sub">
           <b>v<span id="about-ver">--</span></b> · 为飞牛 fnOS 打造的系统监控面板 · 纯本地运行 · 开源免费<br>
           实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU，Docker 容器与端口占用，内置应用统计与历史趋势；所有数据（历史记录 / 界面设置 / 配置）均保存在 <b>NAS 服务器端</b>的程序数据目录中，与访问所用的电脑无关。<br>
-          作者：<a href="https://github.com/MisiteQ" target="_blank" rel="noopener">Misite齊（@MisiteQ）</a> · 项目：<a href="https://github.com/MisiteQ/fnmonitor" target="_blank" rel="noopener">github.com/MisiteQ/fnmonitor</a> · 问题反馈：<a href="https://github.com/MisiteQ/fnmonitor/issues" target="_blank" rel="noopener">Issues</a><br>
+          作者：<a href="https://github.com/MisiteQ" target="_blank" rel="noopener">Misite齊（@MisiteQ）</a> · 项目：<a href="https://github.com/RONGLINC93/fnmonitor" target="_blank" rel="noopener">github.com/RONGLINC93/fnmonitor</a> · 问题反馈：<a href="https://github.com/RONGLINC93/fnmonitor/issues" target="_blank" rel="noopener">Issues</a><br>
           <span id="about-update" style="color:var(--red)"></span>
         </div></div>
-        <button class="op-btn" onclick="window.open('https://github.com/MisiteQ/fnmonitor/releases/latest','_blank')" title="打开 GitHub Releases 页面">前往 Releases</button>
+        <button class="op-btn" onclick="window.open('https://github.com/RONGLINC93/fnmonitor/releases/latest','_blank')" title="打开 GitHub Releases 页面">前往 Releases</button>
         <button class="mod-hide" data-mod="m-set-about" title="隐藏此模块">✕</button>
       </div>
       <div id="settings-msg" class="save-msg"></div>
@@ -1035,7 +1081,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 
 </main>
 
-<footer class="footer">飞牛监控 <span id="foot-ver">v…</span> · 纯本地运行 · 历史数据保存在本机 localdata（每 60 秒一条，打开即加载历史趋势，可选 10 分钟 ~ 全部范围）</footer>
+<footer class="footer">飞牛监控pro <span id="foot-ver">v…</span> · 纯本地运行 · 历史数据保存在本机 localdata（每 60 秒一条，打开即加载历史趋势，可选 10 分钟 ~ 全部范围）</footer>
 
 </div><!-- /content -->
 </div><!-- /layout -->
@@ -1576,18 +1622,47 @@ function renderSysExtra(o){
          '<div class="d-sub" style="margin:4px 2px 0;line-height:1.6">已自动适配标准 hwmon、IPMI/BMC、ThinkPad ACPI，并对 0xA20 硬件监控邮箱做机型无关自动识别（任意品牌，端口与应答双重验证、只读安全）；仍无数值通常表示该机型固件未向系统开放风扇数据。服务器 / 带 BMC 的主机可执行 <code>sudo apt install ipmitool</code> 后自动识别</div>';
   }
   // 风扇控制
-  if (fans.length){
-    h += '<div class="hw-box" data-mod="m-fans" style="margin-top:14px"><h4>🌀 风扇控制 <span class="tag">拖动滑块调速 · 可恢复自动温控</span><button class="mod-hide" data-mod="m-fans" title="隐藏此模块">✕</button></h4><div class="sens-grid" style="margin-top:6px">';
-    fans.forEach(f => {
+  const fen = (state.fanEnabled && state.fanEnabled.length) ? state.fanEnabled : o.fan_enabled;
+  state.fanEnabled = fen;
+  const fshow = (fen && fen.length) ? fans.filter(f => fen.indexOf(f.idx) >= 0) : fans;
+  if (fshow.length){
+    h += '<div class="hw-box" data-mod="m-fans" style="margin-top:14px"><h4>🌀 风扇控制 <span class="tag">拖动滑块调速 · 可交还 BIOS 自动</span>' +
+      '<button class="op-btn" style="margin-left:8px" onclick="openFanDetect()" title="硬件检测与初始化：识别控制器、勾选实际通道、主动探测">硬件检测</button>' +
+      '<button class="op-btn" style="margin-left:6px" onclick="fanRestoreAll()" title="把所有风扇交还主板 BIOS 自动控制（优先还原 BIOS 接管前的原始状态）">一键交还BIOS</button>' +
+      '<label class="f-live" title="独立高频刷新风扇转速（约每 2 秒直读硬件，即时可见）"><input type="checkbox" id="fan-live"' + (typeof fanLiveOn !== "undefined" && fanLiveOn ? " checked" : "") + ' onchange="fanLiveToggle(this.checked)">实时检测</label>' +
+      '<span class="f-msg" id="fans-global-msg" style="display:inline;margin-left:8px"></span>' +
+      '<span class="f-size" title="风扇卡片显示尺寸">尺寸 ' + fanSizeBtns() + "</span>" +
+      '<button class="mod-hide" data-mod="m-fans" title="隐藏此模块">✕</button></h4><div class="sens-grid fs-' + fanSize + '" id="fanCards" style="margin-top:6px">';
+    fshow.forEach(f => {
       const zero = f.rpm === 0;
+      const fa = f.auto || 2;
+      const fmode = f.enable === fa ? "自动" : (f.enable === 1 ? "手动" : (f.enable === 0 ? "全速" : ""));
+      const fmodeCls = f.enable === fa ? "auto" : (f.enable === 1 ? "manual" : (f.enable === 0 ? "full" : ""));
+      const cmode = (f.mode === "manual" || f.mode === "curve") ? f.mode : "bios";
+      // 暂存用户尚未“应用”的临时选择，刷新后用它而非服务端已保存状态，避免模式被冲回 BIOS 自动
+      if (!fanUI[f.idx]) fanUI[f.idx] = { mode: cmode, curve: cloneCurve(f.curve) };
+      const uiMode = fanUI[f.idx].mode || cmode;
       h += '<div class="fan-card" id="fan-' + f.idx + '">' +
-        '<div class="f-head"><span class="f-name">' + esc(f.name) + "</span>" +
-        '<span class="f-rpm ' + (zero ? "zero" : "") + '">' + (zero ? "停转/无信号" : f.rpm + " RPM") + "</span></div>" +
-        '<input type="range" min="0" max="255" value="' + (f.duty || 0) + '" oninput="fanSlide(' + f.idx + ',this.value)" onchange="fanSet(' + f.idx + ',this.value)">' +
-        '<div class="f-ctl"><span class="d-sub">占空比 <b class="f-duty">' + (f.duty || 0) + "</b>/255</span>" +
-        '<button class="op-btn" onclick="fanPreset(' + f.idx + ',128)">50%</button>' +
-        '<button class="op-btn" onclick="fanPreset(' + f.idx + ',255)">全速</button>' +
-        '<button class="op-btn" onclick="fanAuto(' + f.idx + ')">恢复自动</button></div>' +
+        '<div class="f-head"><span class="f-name" title="点击重命名此风扇" onclick="fanRenameStart(' + f.idx + ', this.textContent, event)">' + esc(f.name) + "</span>" +
+        (fmode ? '<span class="f-mode ' + fmodeCls + '">' + fmode + "</span>" : "") +
+        '<span class="f-rpm ' + (zero ? "zero" : "") + '" id="frpm-' + f.idx + '">' + (zero ? "停转/无信号" : f.rpm + " RPM") + "</span></div>" +
+        '<div class="f-modes">' +
+          '<select id="fmode-' + f.idx + '" onchange="fanModeSel(' + f.idx + ')">' +
+            '<option value="bios"' + (uiMode === "bios" ? " selected" : "") + '>BIOS 自动</option>' +
+            '<option value="manual"' + (uiMode === "manual" ? " selected" : "") + '>手动</option>' +
+            '<option value="curve"' + (uiMode === "curve" ? " selected" : "") + '>温度曲线</option>' +
+          '</select>' +
+          '<button class="fd-btn primary" onclick="fanSave(' + f.idx + ')">保存</button>' +
+        '</div>' +
+        '<div id="fan-manual-' + f.idx + '">' +
+          '<input type="range" min="0" max="255" value="' + (f.duty || 0) + '" oninput="fanSlide(' + f.idx + ',this.value)">' +
+          '<div class="f-ctl"><span class="d-sub">占空比 <b class="f-duty">' + (f.duty || 0) + "</b>/255</span>" +
+          '<button class="op-btn" onclick="fanPreset(' + f.idx + ',128)">50%</button>' +
+          '<button class="op-btn" onclick="fanPreset(' + f.idx + ',255)">全速</button></div>' +
+        '</div>' +
+        '<div id="fan-curve-' + f.idx + '" class="fan-curve">' +
+          fanCurveEditor(f) +
+        '</div>' +
         '<div class="f-msg" id="fmsg-' + f.idx + '"></div></div>';
     });
     h += "</div></div>";
@@ -1920,6 +1995,22 @@ async function pollPowerStats(){
 }
 
 /* ---------- 风扇控制 ---------- */
+/* 温度源 → 实时温度（°C）：cpu / system / disk:<name>。供曲线图标当前温度 */
+function fanSrcTemp(src, temp){
+  temp = temp || (state.overview && state.overview.temp) || {};
+  if (src === "system") return (temp.system != null) ? temp.system : null;
+  if (src && src.indexOf("disk:") === 0){
+    const d = (temp.disks || []).find(x => x.name === src.slice(5));
+    return (d && d.temp != null) ? d.temp : null;
+  }
+  return (temp.cpu != null) ? temp.cpu : null;
+}
+/* 记录曲线温度源选择（曲线编辑器温度源下拉用），暂存待「保存」 */
+function fanTempSrc(idx, src){
+  if (!src) return;
+  fanUI[idx] = fanUI[idx] || {}; fanUI[idx].curve = fanUI[idx].curve || {};
+  fanUI[idx].curve.src = src;
+}
 function fanSlide(idx, v){
   const card = $("fan-" + idx);
   if (card) card.querySelector(".f-duty").textContent = v;
@@ -1938,15 +2029,351 @@ function fanPreset(idx, duty){
   if (r) r.value = duty;
   const c = $("fan-" + idx);
   if (c) c.querySelector(".f-duty").textContent = duty;
-  fanSet(idx, duty);
 }
-async function fanAuto(idx){
+async function fanBios(idx){
   try {
-    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idx: idx, auto: true }) });
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idx: idx, bios: true }) });
     const j = await r.json();
     const m = $("fmsg-" + idx);
-    if (m) m.textContent = j.ok ? (j.note || "已恢复自动温控") : ("失败: " + (j.error || ""));
+    if (m) m.textContent = j.ok ? (j.note || "已交还 BIOS 控制") : ("失败: " + (j.error || ""));
     setTimeout(() => { if (m) m.textContent = ""; }, 3000);
+  } catch(e){}
+}
+/* 模式下拉框切换：仅切换显示，不下发；需点「保存」才生效 */
+function fanModeSel(idx){
+  // 仅暂存所选模式（所有元素常显，不做显隐切换），点「保存」才下发
+  const sel = $("fmode-" + idx);
+  const mode = sel ? sel.value : "bios";
+  fanUI[idx] = fanUI[idx] || {}; fanUI[idx].mode = mode;
+}
+/* 统一保存：按下拉框所选模式提交（BIOS自动 / 手动 / 温度曲线） */
+async function fanSave(idx){
+  const sel = $("fmode-" + idx);
+  const mode = sel ? sel.value : "bios";
+  fanUI[idx] = fanUI[idx] || {}; fanUI[idx].mode = mode;
+  const m = $("fmsg-" + idx);
+  const msg = t => { if (m){ m.textContent = t; setTimeout(() => { if (m) m.textContent = ""; }, 3000); } };
+  try {
+    if (mode === "bios"){
+      await fanBios(idx);                 // 交还 BIOS 自动（写 auto enable）
+      await saveCurveMode(idx, "bios", null);  // 清掉该通道曲线，停止曲线守护
+      msg("已保存：BIOS 自动");
+    } else if (mode === "manual"){
+      const slider = document.querySelector("#fan-" + idx + " input[type=range]");
+      const d = slider ? slider.value : 0;
+      await fanSet(idx, d);               // 写入占空比
+      await saveCurveMode(idx, "manual", null);
+      msg("已保存：手动 " + d + "/255");
+    } else {
+      await fanCurveApplyInner(idx);      // 保存曲线配置
+      msg("已保存：温度曲线");
+    }
+    if (state.overview) renderSysExtra(state.overview);
+  } catch(e){ msg("保存失败: " + ((e && e.message) ? e.message : e)); }
+}
+async function saveCurveMode(idx, mode, curveObj){
+  const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "save_curve", mode: { [idx]: mode }, curves: curveObj == null ? { [idx]: null } : { [idx]: curveObj } }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "保存失败");
+}
+/* 一键交还所有风扇到 BIOS 控制（对齐 fn-fancontrol restore-auto） */
+async function fanRestoreAll(){
+  if (!window.confirm("把所有风扇交还主板 BIOS 自动控制？\n将优先还原 BIOS 接管前的原始状态。")) return;
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "restore_all", snapshot: true }) });
+    const j = await r.json();
+    if (state.overview) renderSysExtra(state.overview);  // 先重建，再写提示（否则被清空）
+    const el = $("fans-global-msg");
+    if (el){
+      el.textContent = j.ok ? (j.note || "已交还 BIOS") : ("失败: " + (j.error || ""));
+      setTimeout(() => { if ($("fans-global-msg")) $("fans-global-msg").textContent = ""; }, 4000);
+    }
+  } catch(e){}
+}
+/* ---------- 风扇独立高频刷新（实时检测） ---------- */
+let fanSize = "md";         // 风扇卡片尺寸：lg / md / sm
+let fanLiveOn = false;
+let fanLiveTimer = null;
+const FAN_LIVE_MS = 2000;
+async function fanLiveTick(){
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "live" }) });
+    const j = await r.json();
+    if (!j || !j.ok || !j.fans) return;
+    j.fans.forEach(f => {
+      const idx = f.idx, zero = (f.rpm === 0);
+      const rpmEl = $("frpm-" + idx);
+      if (rpmEl){ rpmEl.textContent = zero ? "停转/无信号" : f.rpm + " RPM"; rpmEl.classList.toggle("zero", zero); }
+      if (f.duty != null){
+        const pct = Math.round(f.duty / 255 * 100);
+        const pctEl = $("fcurp-" + idx);
+        if (pctEl){ pctEl.textContent = pct + "%"; pctEl.classList.toggle("mid", pct >= 30 && pct < 70); pctEl.classList.toggle("high", pct >= 70); }
+        const subEl = $("fcurs-" + idx);
+        if (subEl) subEl.textContent = "占空比 " + f.duty + "/255 · 转速 " + (zero ? "停转" : f.rpm + " RPM");
+      }
+    });
+    // 曲线区域可见且非拖拽时，重绘当前温度线与工作点（拖拽中不打断）
+    if (fcDragPid == null){
+      j.fans.forEach(f => { const cb = $("fc-chart-" + f.idx); if (cb && cb.offsetParent) fanCurveDraw(f.idx); });
+    }
+  } catch(e){}
+}
+function fanLiveToggle(on){
+  fanLiveOn = !!on;
+  if (fanLiveTimer){ clearInterval(fanLiveTimer); fanLiveTimer = null; }
+  if (fanLiveOn){ fanLiveTick(); fanLiveTimer = setInterval(fanLiveTick, FAN_LIVE_MS); }
+  const el = $("fans-global-msg");
+  if (el){ el.textContent = fanLiveOn ? ("实时检测已开启（每 " + (FAN_LIVE_MS / 1000) + " 秒）") : "实时检测已关闭"; setTimeout(() => { if ($("fans-global-msg")) $("fans-global-msg").textContent = ""; }, 3000); }
+}
+/* 风扇卡片尺寸切换：巨大 / 超大 / 大 / 中 / 小（并排按钮） */
+const FAN_SIZE_LIST = [["xxl","巨大"],["xl","超大"],["lg","大"],["md","中"],["sm","小"]];
+function fanSizeBtns(){
+  return FAN_SIZE_LIST.map(x => '<button class="f-size-btn' + (fanSize === x[0] ? " on" : "") + '" data-v="' + x[0] + '" onclick="setFanSize(\'' + x[0] + '\')">' + x[1] + "</button>").join("");
+}
+function fanSizeSyncBtns(v){
+  document.querySelectorAll(".f-size-btn").forEach(b => b.classList.toggle("on", b.getAttribute("data-v") === v));
+}
+function setFanSize(v){
+  if (["xxl","xl","lg","md","sm"].indexOf(v) < 0) v = "md";
+  fanSize = v;
+  const grid = $("fanCards");
+  if (grid) grid.className = "sens-grid fs-" + v;
+  fanSizeSyncBtns(v);
+  try { localStorage.setItem("fnmonitor-fan-size", v); } catch(e){}
+  saveUI();
+}
+/* ---------- 风扇手动重命名 ---------- */
+let fanRenameEl = null, fanRenameIdx = null;
+function fanRenameStart(idx, cur, ev){
+  fanRenameCancel();
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.className = "f-rename-in"; inp.value = cur || ""; inp.maxLength = 40;
+  document.body.appendChild(inp);
+  if (ev && ev.target && ev.target.getBoundingClientRect){
+    const r = ev.target.getBoundingClientRect();
+    inp.style.left = r.left + "px";
+    inp.style.top = r.top + "px";
+    inp.style.width = Math.max(140, r.width + 70) + "px";
+  }
+  fanRenameEl = inp; fanRenameIdx = idx;
+  inp.focus(); inp.select();
+  inp.addEventListener("keydown", e => {
+    if (e.key === "Enter"){ e.preventDefault(); fanRenameCommit(); }
+    else if (e.key === "Escape"){ e.preventDefault(); fanRenameCancel(); }
+  });
+  inp.addEventListener("blur", () => fanRenameCommit());
+}
+function fanRenameCancel(){
+  if (fanRenameEl){ fanRenameEl.remove(); fanRenameEl = null; fanRenameIdx = null; }
+}
+async function fanRenameCommit(){
+  if (!fanRenameEl) return;
+  const idx = fanRenameIdx, val = fanRenameEl.value.trim();
+  fanRenameCancel();
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rename", idx: idx, name: val }) });
+    const j = await r.json();
+    if (!j.ok){ alert("重命名失败：" + (j.error || "")); return; }
+    if (state.overview) renderSysExtra(state.overview);
+  } catch(e){}
+}
+/* 风扇 UI 暂存：记住用户未“应用”的临时选择（模式 / 曲线参数），避免轮询刷新时被服务端已保存状态冲掉 */
+const fanUI = {};
+function cloneCurve(c){
+  if (!c) return null;
+  return { src: c.src, min_duty: c.min_duty != null ? c.min_duty : null, max_duty: c.max_duty != null ? c.max_duty : null,
+           points: c.points ? c.points.map(p => [p[0], p[1]]) : null };
+}
+function fanUISync(idx){
+  const ui = fanUI[idx]; if (!ui) return;
+  ui.curve = ui.curve || {};
+  const src = $("fc-src-" + idx), mn = $("fc-min-" + idx), mx = $("fc-max-" + idx);
+  const rows = fanCurveRows(idx).map(r => [r.t, r.d]);
+  if (src) ui.curve.src = src.value;
+  if (mn && mn.value !== "") ui.curve.min_duty = parseFloat(mn.value);
+  if (mx && mx.value !== "") ui.curve.max_duty = parseFloat(mx.value);
+  if (rows.length) ui.curve.points = rows;
+}
+/* 曲线编辑器 HTML（含温度源、最小/最大占空比、拐点表、应用/试算） */
+function fanCurveEditor(f){
+  const c = (fanUI[f.idx] && fanUI[f.idx].curve) ? fanUI[f.idx].curve : (f.curve || {});
+  const src = c.src || "cpu";
+  const pts = (c.points && c.points.length) ? c.points : [[30,20],[45,40],[55,60],[65,85],[75,100]];
+  // 当前实际占空比（曲线守护已按温度实时调节，占空比即当前转速百分比）
+  const duty = (f.duty != null) ? f.duty : 0;
+  const curPct = Math.round(duty / 255 * 100);
+  const rpmNow = (f.rpm != null) ? f.rpm : null;
+  let h = '<div class="fc-cur">当前 <b class="fc-cur-pct' + (curPct >= 70 ? " high" : curPct >= 30 ? " mid" : "") + '" id="fcurp-' + f.idx + '">' + curPct + '%</b>' +
+    '<span class="fc-cur-sub" id="fcurs-' + f.idx + '">占空比 ' + duty + "/255 · 转速 " + (rpmNow != null ? rpmNow + " RPM" : "--") + "</span></div>";
+  h += '<div class="fc-row"><span>温度源</span><select id="fc-src-' + f.idx + '" onchange="fanTempSrc(' + f.idx + ', this.value); fanCurveDraw(' + f.idx + ')">' +
+    '<option value="cpu"' + (src === "cpu" ? " selected" : "") + '>CPU 温度</option>' +
+    '<option value="system"' + (src === "system" ? " selected" : "") + '>主板温度</option>' +
+    fcDiskOpts(src) + '</select></div>';
+  h += '<div class="fc-row"><span>最小占空比%</span><input type="number" min="0" max="100" id="fc-min-' + f.idx + '" value="' + (c.min_duty != null ? c.min_duty : 10) + '" oninput="fanCurveDraw(' + f.idx + ')"></div>';
+  h += '<div class="fc-row"><span>最大占空比%</span><input type="number" min="0" max="100" id="fc-max-' + f.idx + '" value="' + (c.max_duty != null ? c.max_duty : 100) + '" oninput="fanCurveDraw(' + f.idx + ')"></div>';
+  h += '<div class="fc-chart" id="fc-chart-' + f.idx + '"></div>';
+  h += '<div class="fc-hint">点击图表空白处添加拐点 · 拖动圆点调整温度/占空比 · 双击圆点删除</div>';
+  h += '<div class="fc-pts" id="fc-pts-' + f.idx + '">';
+  pts.forEach(p => { h += fanCurvePointRow(f.idx, p[0], p[1], fcPid++); });
+  h += '</div>';
+  h += '<button class="op-btn" onclick="fanCurveAdd(' + f.idx + ')">+ 添加拐点</button>';
+  h += '<div class="fc-target" id="fan-curve-target-' + f.idx + '"></div>';
+  h += '<button class="op-btn" onclick="fanCurveTest(' + f.idx + ')">试算当前目标</button>';
+  h += '<div class="fc-hint" style="margin-top:6px">调整完成后点上方「保存」才会生效</div>';
+  setTimeout(() => fanCurveDraw(f.idx), 0);  // 面板插入 DOM 后绘制曲线
+  return h;
+}
+function fanCurvePointRow(idx, t, d, pid){
+  return '<div class="fc-pt" data-pid="' + pid + '"><span>≥</span>' +
+    '<input type="number" class="fc-t" value="' + t + '" min="-20" max="120" oninput="fanCurveDraw(' + idx + ')">°C → ' +
+    '<input type="number" class="fc-d" value="' + d + '" min="0" max="100" oninput="fanCurveDraw(' + idx + ')">%' +
+    '<button class="op-btn" onclick="fcPtDel(event,' + idx + ',\'' + pid + '\')">✕</button></div>';
+}
+function fcDiskOpts(src){
+  const t = (state.overview && state.overview.temp && state.overview.temp.disks) || [];
+  return t.map(d => '<option value="disk:' + esc(d.name) + '"' + (src === "disk:" + d.name ? " selected" : "") + '>' + esc(d.name) + ' 温度</option>').join("");
+}
+function fanCurveAdd(idx){
+  const box = $("fc-pts-" + idx);
+  if (box) box.insertAdjacentHTML("beforeend", fanCurvePointRow(idx, 50, 60, fcPid++));
+  fanCurveDraw(idx);
+}
+/* ===== 温度-占空比 曲线图表（SVG） ===== */
+let fcPid = 1;            // 拐点稳定 id（跨重绘保留拖动对应关系）
+let fcDragPid = null;     // 当前拖动中的拐点 pid
+let fcJustDragged = false;
+function fanCurveGeom(){ return { TMIN: 20, TMAX: 100, W: 320, H: 180, PAD: 32 }; }
+function fanCurveX(t, g){ return g.PAD + (t - g.TMIN) / (g.TMAX - g.TMIN) * (g.W - 2 * g.PAD); }
+function fanCurveY(d, g){ return (g.H - g.PAD) - (d / 100) * (g.H - 2 * g.PAD); }
+function fanCurveTX(x, g){ return g.TMIN + (x - g.PAD) / (g.W - 2 * g.PAD) * (g.TMAX - g.TMIN); }
+function fanCurveTY(y, g){ return (g.H - g.PAD - y) / (g.H - 2 * g.PAD) * 100; }
+// 与后端 fan_eval_curve 等价的纯前端插值（用于图表预览）
+function fanEvalCurveJS(pts, temp, min, max){
+  if (temp == null || !pts.length) return null;
+  let d;
+  if (temp <= pts[0][0]) d = pts[0][1];
+  else if (temp >= pts[pts.length - 1][0]) d = pts[pts.length - 1][1];
+  else { d = pts[pts.length - 1][1]; for (let i = 1; i < pts.length; i++){ if (temp <= pts[i][0]){ const t0 = pts[i-1][0], d0 = pts[i-1][1], t1 = pts[i][0], d1 = pts[i][1]; d = (t1 === t0) ? d1 : d0 + (d1 - d0) * (temp - t0) / (t1 - t0); break; } } }
+  if (min != null) d = Math.max(d, min);
+  if (max != null) d = Math.min(d, max);
+  return Math.max(0, Math.min(100, d));
+}
+function fanCurveRows(idx){
+  const arr = [];
+  document.querySelectorAll("#fc-pts-" + idx + " .fc-pt").forEach(r => {
+    const t = parseFloat(r.querySelector(".fc-t").value);
+    const d = parseFloat(r.querySelector(".fc-d").value);
+    if (!isNaN(t) && !isNaN(d)) arr.push({ pid: r.getAttribute("data-pid"), t: Math.round(t), d: Math.round(d) });
+  });
+  return arr;
+}
+function fanCurveDraw(idx){
+  const box = $("fc-chart-" + idx);
+  if (!box) return;
+  const g = fanCurveGeom();
+  const rawMin = parseFloat($("fc-min-" + idx).value);
+  const rawMax = parseFloat($("fc-max-" + idx).value);
+  const min = isNaN(rawMin) ? null : rawMin;
+  const max = isNaN(rawMax) ? null : rawMax;
+  const rows = fanCurveRows(idx);
+  const pts = rows.map(r => [r.t, r.d]).sort((a, b) => a[0] - b[0]);
+  const baseY = fanCurveY(0, g);            // 0% 基线（填充底边）
+  let s = '<svg class="fc-svg" viewBox="0 0 ' + g.W + ' ' + g.H + '" onclick="fcChartClick(event,' + idx + ')">';
+  s += '<defs><linearGradient id="fcg' + idx + '" x1="0" y1="0" x2="0" y2="1">' +
+       '<stop class="fc-grad-top" offset="0%"/><stop class="fc-grad-bot" offset="100%"/></linearGradient></defs>';
+  s += '<rect class="fc-bg" x="0" y="0" width="' + g.W + '" height="' + g.H + '"/>';
+  // 网格 + 坐标轴：Y 轴百分比 0/25/50/75/100%，X 轴温度 20°~100°
+  for (let d = 0; d <= 100; d += 25){ const y = fanCurveY(d, g); s += '<line class="fc-grid" x1="' + g.PAD + '" y1="' + y + '" x2="' + (g.W - g.PAD) + '" y2="' + y + '"/><text class="fc-axis" x="2" y="' + (y + 3) + '">' + d + '%</text>'; }
+  for (let t = g.TMIN; t <= g.TMAX; t += 20){ const x = fanCurveX(t, g); s += '<line class="fc-grid" x1="' + x + '" y1="' + g.PAD + '" x2="' + x + '" y2="' + (g.H - g.PAD) + '"/><text class="fc-axis" x="' + (x - 10) + '" y="' + (g.H - g.PAD + 13) + '">' + t + '°</text>'; }
+  // 采样曲线：折线 + 下方渐变填充
+  const smp = [];
+  if (pts.length){
+    for (let i = 0; i <= 60; i++){ const t = g.TMIN + (g.TMAX - g.TMIN) * i / 60; const dv = fanEvalCurveJS(pts, t, min, max); if (dv == null) continue; smp.push([fanCurveX(t, g), fanCurveY(dv, g)]); }
+  }
+  if (smp.length){
+    let line = "", area = "M" + smp[0][0].toFixed(1) + " " + baseY.toFixed(1) + " ";
+    for (let i = 0; i < smp.length; i++){ line += (i ? "L" : "M") + smp[i][0].toFixed(1) + " " + smp[i][1].toFixed(1) + " "; }
+    for (let i = 0; i < smp.length; i++){ area += "L" + smp[i][0].toFixed(1) + " " + smp[i][1].toFixed(1) + " "; }
+    area += "L" + smp[smp.length - 1][0].toFixed(1) + " " + baseY.toFixed(1) + " Z";
+    s += '<path class="fc-fill" d="' + area + '" fill="url(#fcg' + idx + ')"/>';
+    s += '<path class="fc-curve" d="' + line + '"/>';
+  }
+  // 当前温度：橙色垂直虚线 + 温度标签 + 曲线上的当前工作点
+  const srcSel = $("fc-src-" + idx);
+  const temp = fanSrcTemp(srcSel ? srcSel.value : "cpu");
+  if (temp != null){
+    const tc = Math.max(g.TMIN, Math.min(g.TMAX, temp));
+    const nx = fanCurveX(tc, g);
+    s += '<line class="fc-now-line" x1="' + nx.toFixed(1) + '" y1="' + (g.PAD - 4) + '" x2="' + nx.toFixed(1) + '" y2="' + (g.H - g.PAD) + '"/>';
+    s += '<text class="fc-now-label" x="' + (nx + 5).toFixed(1) + '" y="' + (g.PAD - 8) + '">' + temp.toFixed(0) + '°C</text>';
+    const ny = fanEvalCurveJS(pts, tc, min, max);
+    if (ny != null) s += '<circle class="fc-now-dot" cx="' + nx.toFixed(1) + '" cy="' + fanCurveY(ny, g).toFixed(1) + '" r="5"/>';
+  }
+  // 拐点（空心圆环，可拖动）
+  rows.forEach(r => { const x = fanCurveX(Math.max(g.TMIN, Math.min(g.TMAX, r.t)), g); const y = fanCurveY(Math.max(0, Math.min(100, r.d)), g);
+    s += '<circle class="fc-dot" cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="5.5" data-pid="' + r.pid + '" onpointerdown="fcPtDown(event,' + idx + ',\'' + r.pid + '\')" onpointermove="fcPtMove(event,' + idx + ')" onpointerup="fcPtUp(event)" ondblclick="fcPtDel(event,' + idx + ',\'' + r.pid + '\')"></circle>';
+  });
+  s += '</svg>';
+  box.innerHTML = s;
+  fanUISync(idx);  // 把当前曲线参数暂存，刷新后保留未“应用”的编辑
+}
+function fcPtDown(ev, idx, pid){ ev.stopPropagation(); fcDragPid = pid; if (ev.target.setPointerCapture) try { ev.target.setPointerCapture(ev.pointerId); } catch(e){} }
+function fcPtUp(){ fcDragPid = null; }
+function fcPtMove(ev, idx){
+  if (fcDragPid == null) return;
+  const svg = ev.currentTarget.ownerSVGElement; if (!svg) return;
+  const g = fanCurveGeom();
+  const rect = svg.getBoundingClientRect();
+  const x = (ev.clientX - rect.left) / rect.width * g.W;
+  const y = (ev.clientY - rect.top) / rect.height * g.H;
+  let t = Math.round(fanCurveTX(x, g)), d = Math.round(fanCurveTY(y, g));
+  t = Math.max(g.TMIN, Math.min(g.TMAX, t)); d = Math.max(0, Math.min(100, d));
+  const row = document.querySelector('#fc-pts-' + idx + ' .fc-pt[data-pid="' + fcDragPid + '"]');
+  if (row){ row.querySelector(".fc-t").value = t; row.querySelector(".fc-d").value = d; }
+  fanCurveDraw(idx);
+  fcJustDragged = true;
+}
+function fcChartClick(ev, idx){
+  if (fcJustDragged){ fcJustDragged = false; return; }   // 拖动结束的 click 不新增点
+  if (ev.target.tagName === "circle") return;            // 点到圆点本身不新增
+  const g = fanCurveGeom();
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const x = (ev.clientX - rect.left) / rect.width * g.W;
+  const y = (ev.clientY - rect.top) / rect.height * g.H;
+  const t = Math.round(fanCurveTX(x, g)), d = Math.round(fanCurveTY(y, g));
+  const box = $("fc-pts-" + idx);
+  if (box) box.insertAdjacentHTML("beforeend", fanCurvePointRow(idx, t, d, fcPid++));
+  fanCurveDraw(idx);
+}
+function fcPtDel(ev, idx, pid){
+  ev.stopPropagation();
+  if (document.querySelectorAll('#fc-pts-' + idx + ' .fc-pt').length <= 2){ const m = $("fmsg-" + idx); if (m) m.textContent = "至少保留 2 个拐点"; setTimeout(() => { if (m) m.textContent = ""; }, 2000); return; }
+  const row = document.querySelector('#fc-pts-' + idx + ' .fc-pt[data-pid="' + pid + '"]');
+  if (row) row.remove();
+  fanCurveDraw(idx);
+}
+async function fanCurveApplyInner(idx){
+  const src = $("fc-src-" + idx).value;
+  const min = parseFloat($("fc-min-" + idx).value);
+  const max = parseFloat($("fc-max-" + idx).value);
+  const pts = [];
+  document.querySelectorAll("#fc-pts-" + idx + " .fc-pt").forEach(r => {
+    const t = parseFloat(r.querySelector(".fc-t").value);
+    const d = parseFloat(r.querySelector(".fc-d").value);
+    if (!isNaN(t) && !isNaN(d)) pts.push([Math.round(t), Math.round(d)]);
+  });
+  pts.sort((a, b) => a[0] - b[0]);
+  if (!pts.length) throw new Error("请至少添加一个拐点");
+  await saveCurveMode(idx, "curve", { src: src, points: pts, min_duty: isNaN(min) ? null : min, max_duty: isNaN(max) ? null : max });
+}
+async function fanCurveTest(idx){
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "curve_status" }) });
+    const j = await r.json();
+    const el = $("fan-curve-target-" + idx);
+    const s = j.status && j.status[String(idx)];
+    if (el) el.textContent = s ? ("当前 " + (s.temp != null ? s.temp.toFixed(1) : "--") + "°C → 目标 " + (s.target_pct != null ? s.target_pct.toFixed(0) : "--") + "%（" + (s.target_duty != null ? s.target_duty : "--") + "/255）") : "无曲线配置";
   } catch(e){}
 }
 async function saveConfig(){
@@ -2764,6 +3191,7 @@ function saveUI(){
     tab: state.tab || "home",
     sideCollapsed: document.documentElement.classList.contains("side-min"),
     fontScale: parseFloat($("set-font-scale") ? $("set-font-scale").value : "1") || 1,
+    fanSize: (typeof fanSize !== "undefined" && fanSize) ? fanSize : "md",
   };
   try {
     localStorage.setItem("fnmonitor-theme", ui.theme);
@@ -2772,6 +3200,7 @@ function saveUI(){
     localStorage.setItem("fnmonitor-hide-panels", JSON.stringify(ui.hiddenPanels));
     localStorage.setItem("fnmonitor-hide-mods", JSON.stringify(ui.hiddenMods));
     localStorage.setItem("fnmonitor-font-scale", String(ui.fontScale));
+    localStorage.setItem("fnmonitor-fan-size", ui.fanSize);
   } catch(e){}
   clearTimeout(uiSyncTimer);
   if (!uiBootReady){ uiPending = true; return; }  // 启动竞态保护：服务器配置恢复前不回写
@@ -2851,6 +3280,13 @@ async function loadUI(){
     }
     // 字体大小以服务器配置为准（跨设备一致）
     if (ui.fontScale) applyFontScale(String(ui.fontScale));
+    // 风扇卡片尺寸以服务器配置为准（跨设备一致）
+    if (ui.fanSize && ["xxl","xl","lg","md","sm"].indexOf(ui.fanSize) >= 0){
+      fanSize = ui.fanSize;
+      const g = $("fanCards");
+      if (g) g.className = "sens-grid fs-" + fanSize;
+      fanSizeSyncBtns(fanSize);
+    }
   } catch(e){}
   // 服务器配置加载完成：解除回写门禁；启动期间被门禁挂起的保存（用户操作）补发一次
   uiBootReady = true;
@@ -2912,10 +3348,16 @@ async function loadUI(){
       moTimer = setTimeout(() => { moTimer = null; if (state.hiddenMods.size) applyMods(); }, 0);
     }).observe(mainEl, { childList: true, subtree: true });
   }
-  // 拖拽排序
+  // 拖拽排序（仅标题区 .panel-head 可发起拖动，避免正文图表被原生拖拽抢走指针事件）
   let dragPanel = null;
   document.querySelectorAll("main section[data-panel]").forEach(p => {
-    p.draggable = true;
+    const head = p.querySelector(".panel-head");
+    p.draggable = false;
+    if (head) head.addEventListener("mousedown", e => {
+      if (e.target.closest(".panel-hide")) { p.draggable = false; return; }  // 隐藏按钮不发起拖动
+      p.draggable = true;
+    });
+    p.addEventListener("mouseup", () => { p.draggable = false; });  // 松开后正文不再可拖
     p.addEventListener("dragstart", e => {
       dragPanel = p;
       p.classList.add("dragging");
@@ -2923,6 +3365,7 @@ async function loadUI(){
       e.dataTransfer.effectAllowed = "move";
     });
     p.addEventListener("dragend", () => {
+      p.draggable = false;
       dragPanel = null;
       p.classList.remove("dragging");
       savePanelOrder();
@@ -3256,6 +3699,174 @@ function autoHideEmptyPanels(){
     document.body.appendChild(root);
   }
 })();
+
+/* ---------- 风扇硬件检测与初始化向导（对齐 fn-fancontrol 检测向导） ---------- */
+function openFanDetect(){
+  const m = $("fanDetect");
+  if (!m) return;
+  m.classList.remove("hidden");
+  fanDetectLoad();
+}
+function closeFanDetect(){
+  const m = $("fanDetect");
+  if (m) m.classList.add("hidden");
+}
+async function fanDetectLoad(){
+  const body = $("fanDetectBody");
+  if (body) body.innerHTML = '<div class="fd-note">正在检测硬件…</div>';
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "hardware" }) });
+    fanDetectRender(await r.json());
+  } catch(e){ if (body) body.innerHTML = '<div class="fd-note">检测失败：' + e + '</div>'; }
+}
+function fanDetectRender(j){
+  const body = $("fanDetectBody");
+  if (!body) return;
+  if (!j || j.channel_count == null){
+    body.innerHTML = '<div class="fd-note">未读取到硬件信息</div>';
+    return;
+  }
+  const enabled = (state.fanEnabled && state.fanEnabled.length) ? state.fanEnabled : null;
+  let h = '<div class="fd-note">已加载驱动模块：' + (j.modules_loaded ? "是" : "否") +
+    ' · 识别到 ' + j.controller_count + ' 个控制器、' + j.channel_count + ' 个 PWM 通道。' +
+    '勾选实际接了风扇的通道，未接风扇的接头取消勾选可避免出现在调速面板；「主动检测」会逐个全速试转自动勾选有转动的通道。</div>';
+  (j.controllers || []).forEach(c => {
+    h += '<div class="fd-ctrl"><h3>' + esc(c.chip) + ' <span class="chip">' + esc(c.hwmon) +
+      ' · ' + (c.controllable ? "可写 PWM" : "只读") + ' · 自动档=' + c.auto + ' / 手动档=' + c.manual + '</span></h3>';
+    h += '<div class="sub">PWM 接头（header）：</div>';
+    (c.channels || []).forEach(ch => {
+      const on = enabled ? (enabled.indexOf(ch.idx) >= 0) : true;
+      const zero = (ch.rpm == null || ch.rpm === 0);
+      h += '<label class="fd-ch"><input type="checkbox" data-idx="' + ch.idx + '"' + (on ? " checked" : "") + '>' +
+        '<span class="nm">' + esc(ch.custom_name || ch.name || (c.chip + " 风扇 " + ch.num)) + (ch.label ? " (" + esc(ch.label) + ")" : "") + (ch.custom_name ? '<em class="fd-custom">已命名</em>' : "") + '</span>' +
+        '<span class="rpm ' + (zero ? "zero" : "") + '">' + (ch.rpm != null ? ch.rpm + " RPM" : "--") +
+        ' · 占空比 ' + (ch.duty != null ? ch.duty : "-") + '/255 · ' + (ch.mode || "-") +
+        ' · BIOS温度源 ' + (ch.temp_sel != null ? ("#" + ch.temp_sel) : "不支持") +
+        ' · BIOS原档 ' + (ch.original && ch.original.enable != null ? ch.original.enable : "-") +
+        '/' + (ch.original && ch.original.duty != null ? ch.original.duty : "-") + '</span></label>';
+    });
+    h += '</div>';
+  });
+  body.innerHTML = h;
+}
+async function fanDetectRescan(){
+  const body = $("fanDetectBody");
+  if (body) body.innerHTML = '<div class="fd-note">重新扫描中…</div>';
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rescan" }) });
+    fanDetectRender(await r.json());
+  } catch(e){ if (body) body.innerHTML = '<div class="fd-note">重扫失败：' + e + '</div>'; }
+}
+async function fanDetectProbe(){
+  const note = $("fanDetectNote");
+  if (note) note.textContent = "主动检测：逐个通道全速试转，请稍候…";
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "probe" }) });
+    const j = await r.json();
+    if (j && j.results){
+      const have = {};
+      j.results.forEach(x => { if (x.has_fan) have[x.idx] = true; });
+      document.querySelectorAll("#fanDetectBody input[type=checkbox]").forEach(cb => {
+        cb.checked = !!have[parseInt(cb.dataset.idx, 10)];
+      });
+      const names = j.results.filter(x => x.has_fan).map(x => x.name).join("、");
+      if (note) note.textContent = "主动检测完成：" + (names || "未检测到转动的风扇");
+    }
+  } catch(e){ if (note) note.textContent = "主动检测失败：" + e; }
+}
+async function fanDetectApply(){
+  const idxs = [];
+  document.querySelectorAll("#fanDetectBody input[type=checkbox]:checked").forEach(cb => idxs.push(parseInt(cb.dataset.idx, 10)));
+  try {
+    const r = await fetch("/api/fan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save", enabled: idxs }) });
+    const j = await r.json();
+    if (j && j.ok){
+      state.fanEnabled = idxs;
+      closeFanDetect();
+      if (state.overview) renderSysExtra(state.overview);
+    } else {
+      const note = $("fanDetectNote");
+      if (note) note.textContent = "保存失败：" + ((j && j.error) || "");
+    }
+  } catch(e){ const note = $("fanDetectNote"); if (note) note.textContent = "保存失败：" + e; }
+}
 </script>
+<style>
+.fd-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
+.fd-mask.hidden{display:none}
+.fd-box{background:var(--card);border:1px solid var(--border);border-radius:14px;max-width:760px;width:100%;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.fd-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.fd-head h2{margin:0;font-size:16px}
+.fd-close{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+.fd-body{padding:16px 20px;overflow:auto}
+.fd-foot{display:flex;align-items:center;gap:10px;padding:14px 20px;border-top:1px solid var(--border)}
+.fd-foot .spacer{flex:1}
+.fd-note{color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:10px}
+.fd-ctrl{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.fd-ctrl h3{margin:0 0 4px;font-size:14px}
+.fd-ctrl .chip{color:var(--emerald);font-size:12px;font-weight:400}
+.fd-ctrl .sub{color:var(--muted);font-size:12px;margin:6px 0 4px}
+.fd-ch{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed var(--border)}
+.fd-ch input[type=checkbox]{width:16px;height:16px;flex:none}
+.fd-ch .nm{flex:1;font-size:13px}
+.fd-ch .rpm{color:var(--emerald);font-size:12px;min-width:120px;text-align:right}
+.fd-ch .rpm.zero{color:var(--amber)}
+.fd-btn{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px}
+.fd-btn:hover{border-color:var(--accent)}
+.fd-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.fd-btn.primary:hover{filter:brightness(.92)}
+.f-modes{display:flex;gap:6px;margin:8px 0 4px;flex-wrap:wrap}
+.f-modes .op-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.fan-curve{margin-top:8px;padding:10px;border:1px dashed var(--border);border-radius:10px;background:var(--card2)}
+.fc-cur{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:2px 0 8px}
+.fc-cur-pct{font-size:17px;font-weight:700;color:var(--sky);font-variant-numeric:tabular-nums}
+.fc-cur-pct.mid{color:var(--amber)}
+.fc-cur-pct.high{color:var(--red)}
+.fc-cur-sub{color:var(--muted);font-variant-numeric:tabular-nums}
+.f-live{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);cursor:pointer;margin-left:10px;user-select:none;white-space:nowrap}
+.f-live input{width:14px;height:14px;cursor:pointer;accent-color:var(--accent);margin:0}
+.fc-row{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px;color:var(--text)}
+.fc-row>span{min-width:84px;color:var(--muted)}
+.fc-row select,.fc-row input{background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px}
+.fc-pts{margin:6px 0}
+.fc-pt{display:flex;align-items:center;gap:6px;margin:4px 0;font-size:13px;color:var(--text)}
+.fc-pt .fc-t,.fc-pt .fc-d{width:64px;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:13px}
+.fc-target{margin:8px 0 4px;color:var(--emerald);font-size:12px;min-height:16px}
+.fc-chart{margin:8px 0;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card2)}
+.fc-svg{display:block;width:100%;height:auto;touch-action:none}
+.fc-bg{fill:var(--card2)}
+.fc-grid{stroke:var(--border)}
+.fc-axis{fill:var(--dim);font-size:9px}
+.fc-grad-top{stop-color:var(--sky);stop-opacity:.30}
+.fc-grad-bot{stop-color:var(--sky);stop-opacity:0}
+.fc-fill{stroke:none}
+.fc-clamp{stroke:var(--amber);stroke-dasharray:4;opacity:.6}
+.fc-curve{fill:none;stroke:var(--sky);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+.fc-now-line{stroke:var(--amber);stroke-width:1.5;stroke-dasharray:4 3}
+.fc-now-label{fill:var(--amber);font-size:10px;font-weight:700}
+.fc-now-dot{fill:var(--card2);stroke:var(--amber);stroke-width:2.5}
+.fc-dot{fill:var(--card2);stroke:var(--sky);stroke-width:2.5;cursor:grab}
+.fc-dot:hover{fill:var(--sky);stroke:var(--card2)}
+.fc-hint{font-size:11px;color:var(--dim);margin:2px 0 6px}
+.fan-card .f-modes{display:flex;align-items:center;gap:8px;margin:8px 0 4px}
+.fan-card .f-modes select{flex:1;min-width:0;background:var(--card2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:13px;cursor:pointer}
+.fan-card .f-modes .fd-btn.primary{flex:none;margin:0}
+</style>
+<div class="fd-mask hidden" id="fanDetect">
+  <div class="fd-box">
+    <div class="fd-head">
+      <h2>硬件检测与初始化</h2>
+      <button class="fd-close" onclick="closeFanDetect()" title="关闭">✕</button>
+    </div>
+    <div class="fd-body" id="fanDetectBody"></div>
+    <div class="fd-foot">
+      <span class="fd-note" id="fanDetectNote"></span>
+      <span class="spacer"></span>
+      <button class="fd-btn" onclick="fanDetectRescan()" title="重新扫描风扇控制器与实际通道">重新检测</button>
+      <button class="fd-btn" onclick="fanDetectProbe()" title="逐个通道全速试转，识别停转的风扇">主动检测</button>
+      <button class="fd-btn primary" onclick="fanDetectApply()">应用并保存</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

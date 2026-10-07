@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-fnMonitor - 飞牛 fnOS 系统监控后端
+fnMonitor Pro - 飞牛 fnOS 系统监控后端
 ====================================
 功能：
   1. 系统资源采集：CPU / 内存 / 磁盘 / 网络 / 温度 / 负载 / 运行时间
@@ -11,7 +11,7 @@ fnMonitor - 飞牛 fnOS 系统监控后端
   5. HTTP API + 静态面板（零第三方依赖，仅 Python 标准库）
 
 用法：
-  python3 server.py --port 8777 --data-dir /vol1/@appdata/fnmonitor
+  python3 server.py --port 8778 --data-dir /vol1/@appdata/fnmonitorpro
 """
 import argparse
 import csv
@@ -30,6 +30,7 @@ import sys
 import threading
 import time
 import traceback
+import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 import urllib.request
@@ -39,7 +40,7 @@ def _read_manifest_version():
     依次尝试：TRIM_APPDEST（fnOS 应用目录）、仓库布局 app/ 上一级、fnOS 应用基础目录。"""
     here = os.path.dirname(os.path.abspath(__file__))
     for base in (os.environ.get("TRIM_APPDEST", ""), os.path.dirname(here),
-                 "/var/apps/fnmonitor"):
+                 "/var/apps/fnmonitorpro"):
         if not base:
             continue
         try:
@@ -54,7 +55,7 @@ def _read_manifest_version():
     return ""
 
 VERSION = _read_manifest_version() or "2.16.4"   # manifest 不可读时回退（须与 manifest 同步）
-UPDATE_REPO = "MisiteQ/fnmonitor"          # GitHub 仓库：在线检查更新 / 下载安装包
+UPDATE_REPO = "RONGLINC93/fnmonitor"         # GitHub 仓库：在线检查更新 / 下载安装包
 UPDATE_CHECK_INTERVAL = 6 * 3600           # 自动更新检查周期（6 小时）
 # 下载加速：直连 GitHub 下载域在国内常不可达，失败后自动依次尝试公共加速镜像
 GH_MIRRORS = ["", "https://gh-proxy.com/", "https://ghfast.top/", "https://ghproxy.net/", "https://gh.llkk.cc/"]
@@ -1791,16 +1792,101 @@ def _hwmon_resolve(hpath, dpath, fname):
     return p
 
 
-def _hwmon_fans():
-    """枚举 /sys/class/hwmon 下所有风扇通道（fanN_input + 对应 pwmN），供控制用。"""
-    fans = []
+# 控制器档案：不同 SuperIO/EC 芯片的 pwmN_enable 自动档位常量不同（取自内核 hwmon 文档）。
+# 例如 Nuvoton NCT6775/679x 系列 auto=5（Smart Fan IV），而该系列 2 反而代表全速；
+# 写错值会把风扇设成全速或无效模式，故「交还BIOS」必须按 hwmon name 查表写入正确档位。
+# 对齐 fn-fancontrol 的 ControllerProfile / set_auto()。
+FAN_PROFILES = (
+    ("nct6775", 1, 5, True),    # NCT6775/6776/6779/679x：auto=5 Smart Fan IV
+    ("nct6683", 1, 2, False),   # 内核 nct6683 驱动禁用 PWM 写入（Intel EC 寄存器布局不符）
+    ("it87", 1, 2, True),
+    ("f71882fg", 1, 2, True),
+    ("f71805f", 1, 2, True),
+    ("w83627ehf", 1, 2, True),
+    ("w83627hf", 1, 2, True),
+    ("sch56xx", 1, 2, True),
+)
+
+
+def _fan_profile_for(name):
+    if not name:
+        return None
+    for key, manual, auto, ctrl in FAN_PROFILES:
+        if name == key or name.startswith(key):
+            return (manual, auto, ctrl)
+    return None
+
+
+def _fan_auto_value(name):
+    """返回 (auto_enable_value, controllable)。
+
+    未知芯片按 hwmon 通用约定 1=手动、2=自动；已知芯片用其专属自动档位（如 NCT6775=5）。
+    """
+    prof = _fan_profile_for(name)
+    if prof is None:
+        return 2, True
+    return prof[1], prof[2]
+
+
+# ---------------------------------------------------------------------------
+# 风扇硬件检测与初始化（对齐 fn-fancontrol：refresh_hardware / find_controller /
+# Controller.__init__ / _remember_original）
+#
+# 启动期扫描 /sys/class/hwmon 识别每块 SuperIO/EC 控制器芯片，建立每通道元数据
+# （pwmN/pwmN_enable 真实路径、芯片专属 manual/auto 档位、是否可控），并抓取 BIOS
+# 原始状态（original）——用于本进程改写后、停机时把通道还原回 BIOS 接管前的样子。
+# ---------------------------------------------------------------------------
+_FAN = types.SimpleNamespace(   # 风扇硬件检测与初始化的可变状态（SimpleNamespace 各字段类型为 Any，
+    hw=[],                      # 避免全大写常量被重定义告警，也避免 dict 多值类型被推断成 union）
+    ts=0.0,                     # 上次初始化时间戳
+    modules_done=False,
+    touched=set(),              # 本进程改写过、停机需还原的 idx
+    originals={},               # key(hwmon:num) -> {enable,duty} BIOS 原态快照（只抓一次，不被改写/rescan 覆盖）
+    curve_enable_written=set(), # 已为曲线模式写过 manual enable 的 idx（离开曲线模式时清除）
+)
+
+# 曲线控制：后台循环周期（秒）与平滑步进（占空比 0-255）；变化小于步进则跳过写入，避免抖动
+FAN_CURVE_INTERVAL = 4
+FAN_CURVE_STEP = 4
+
+
+def _ensure_fan_modules():
+    """尽力加载常见风扇控制器内核模块（对齐 fn-fancontrol ensure_modules）。
+
+    失败静默忽略：模块可能已内置或硬件不存在，不影响其余 hwmon 设备枚举。
+    只在进程生命周期内执行一次。
+    """
+    if _FAN.modules_done:
+        return
+    _FAN.modules_done = True
+    for mod in ("coretemp", "nct6775", "it87", "w83627ehf",
+                "f71882fg", "nct6683", "k10temp", "fam15h_power"):
+        try:
+            subprocess.run(["modprobe", mod], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=8)
+        except Exception:
+            pass
+
+
+def _init_fan_hardware():
+    """硬件检测与初始化：扫描 hwmon 控制器、建立每通道元数据、记录 BIOS 原始状态。
+
+    返回通道列表，每项为：
+        idx, hwmon, chip, num, name, label,
+        path_pwm, path_enable, auto, manual, controllable,
+        original: {enable, duty}  # 初始化时（尚未被本进程改写）的 BIOS 状态
+    """
+    _ensure_fan_modules()
+    channels = []
     base = "/sys/class/hwmon"
     if not os.path.isdir(base):
-        return fans
+        _FAN.hw, _FAN.ts = channels, time.time()
+        return channels
     try:
         hw_list = sorted(os.listdir(base))
     except Exception:
-        return fans
+        _FAN.hw, _FAN.ts = channels, time.time()
+        return channels
     idx = 0
     for hw in hw_list:
         hpath = os.path.join(base, hw)
@@ -1822,21 +1908,181 @@ def _hwmon_fans():
         hname = (read_text(os.path.join(hpath, "name")).strip()
                  or (read_text(os.path.join(dpath, "name")).strip() if dpath else "")
                  or hw)
+        prof = _fan_profile_for(hname)
+        manual, auto, controllable = prof if prof else (1, 2, True)
         fan_inputs = sorted([f for f in entries if f.startswith("fan") and f.endswith("_input")],
                             key=lambda x: int(re.sub(r"\D", "", x) or 0))
         for f in fan_inputs:
             num = re.sub(r"\D", "", f)
-            rpm = read_int_file(_hwmon_resolve(hpath, dpath, f))
             pwm_path = _hwmon_resolve(hpath, dpath, "pwm" + num)
-            pwm = read_int_file(pwm_path)
-            enable = read_int_file(_hwmon_resolve(hpath, dpath, "pwm" + num + "_enable"))
-            fans.append({
+            enable_path = _hwmon_resolve(hpath, dpath, "pwm" + num + "_enable")
+            if not pwm_path or not os.path.exists(pwm_path):
+                continue
+            label = read_text(_hwmon_resolve(hpath, dpath, "fan" + num + "_label")).strip()
+            # BIOS 原态快照：只在首次检测该通道时抓取一次并持久保存，
+            # 之后本进程改写或 rescan 都不覆盖，避免把本进程写的值误当成 BIOS 原档。
+            okey = hw + ":" + num
+            if okey not in _FAN.originals:
+                _FAN.originals[okey] = {"enable": read_int_file(enable_path), "duty": read_int_file(pwm_path)}
+            channels.append({
                 "idx": idx, "hwmon": hw, "chip": hname, "num": num,
-                "name": hname + " 风扇 " + num, "rpm": rpm,
-                "duty": pwm, "enable": enable,
-                "path": pwm_path,
+                "name": label or (hname + " 风扇 " + num), "label": label,
+                "path_pwm": pwm_path, "path_enable": enable_path,
+                "path_temp_sel": _hwmon_resolve(hpath, dpath, "pwm" + num + "_temp_sel"),
+                "auto": auto, "manual": manual, "controllable": controllable,
+                "original": dict(_FAN.originals[okey]),
             })
             idx += 1
+    _FAN.hw, _FAN.ts = channels, time.time()
+    return channels
+
+
+def get_fan_channels(force=False):
+    """返回已初始化的风扇通道元数据（带缓存，最多每 60 秒重扫一次）。
+
+    force=True 时立即重新检测硬件（如模块刚加载、配置变更后）。
+    """
+    if force or not _FAN.hw or time.time() - _FAN.ts > 60:
+        _init_fan_hardware()
+    return _FAN.hw
+
+
+def _fan_channel(idx):
+    """按序号取已初始化的通道元数据；返回 None 表示序号无效。"""
+    chs = get_fan_channels()
+    if 0 <= idx < len(chs):
+        return chs[idx]
+    return None
+
+
+def restore_fan_hardware():
+    """停机还原：把本进程改写过的通道恢复到初始化时记录的 BIOS 原始状态。
+
+    对齐 fn-fancontrol 的 restore_channel（交还 BIOS 接管）——进程退出后不让风扇
+    停留在被手工钉死的低速，避免过热；BIOS 原本如何设置就还原回去（含手动档）。
+    """
+    if not _FAN.touched:
+        return
+    for idx in list(_FAN.touched):
+        ch = _fan_channel(idx)
+        if ch is None or not ch["controllable"]:
+            continue
+        orig = ch.get("original") or {}
+        try:
+            if orig.get("enable") is not None:
+                with open(ch["path_enable"], "w") as fh:
+                    fh.write(str(orig["enable"]))
+            if orig.get("duty") is not None:
+                with open(ch["path_pwm"], "w") as fh:
+                    fh.write(str(orig["duty"]))
+        except Exception:
+            pass
+    _FAN.touched.clear()
+
+
+def fan_hardware_info(names=None):
+    """硬件检测与初始化结果：按控制器分组，含每通道实时转速、芯片专属档位、BIOS 原始状态。
+
+    对齐 fn-fancontrol 的 hardware_info()/status()：展示识别到的控制器（chip）与每个
+    PWM 接头（header），供前端向导列出、勾选实际接了风扇的通道、并主动探测。
+    names 为手动命名映射 {idx: name}，用于在向导里显示自定义名。
+    """
+    names = names or {}
+    chs = get_fan_channels()
+    controllers = {}
+    for ch in chs:
+        ckey = ch["hwmon"] + ":" + ch["chip"]
+        if ckey not in controllers:
+            controllers[ckey] = {
+                "hwmon": ch["hwmon"], "chip": ch["chip"],
+                "controllable": ch["controllable"], "auto": ch["auto"], "manual": ch["manual"],
+                "channels": [],
+            }
+        hpath = os.path.join("/sys/class/hwmon", ch["hwmon"])
+        dpath = os.path.join(hpath, "device") if os.path.isdir(os.path.join(hpath, "device")) else ""
+        enable = read_int_file(ch["path_enable"])
+        controllers[ckey]["channels"].append({
+            "idx": ch["idx"], "num": ch["num"], "name": ch["name"], "label": ch["label"],
+            "custom_name": names.get(str(ch["idx"])),
+            "rpm": read_int_file(_hwmon_resolve(hpath, dpath, "fan" + ch["num"] + "_input")),
+            "duty": read_int_file(ch["path_pwm"]), "enable": enable,
+            "auto": ch["auto"], "manual": ch["manual"], "controllable": ch["controllable"],
+            # BIOS/EC 固件为该通道绑定的温度源索引（pwmN_temp_sel）；读不到时为 None。
+            "temp_sel": read_int_file(ch["path_temp_sel"]) if ch.get("path_temp_sel") else None,
+            "mode": ("auto" if enable == ch["auto"] else
+                     ("manual" if enable == ch["manual"] else
+                      ("full" if enable == 0 else str(enable)))),
+            "original": ch["original"],
+        })
+    return {
+        "modules_loaded": _FAN.modules_done,
+        "channel_count": len(chs),
+        "controller_count": len(controllers),
+        "controllers": list(controllers.values()),
+    }
+
+
+def fan_probe(idxs=None, settle=1.5):
+    """主动检测：把指定通道临时切手动全速，等待 settle 秒后读转速，再还原到探测前状态，
+    返回哪些通道确有风扇（转速 > 0）。对齐 fn-fancontrol 的 probe_channels / 主动检测。
+
+    仅在可控通道上执行；探测结束即还原 enable/duty，不会长期占用硬件。
+    """
+    if idxs is None:
+        idxs = [c["idx"] for c in get_fan_channels() if c["controllable"]]
+    out = []
+    for idx in idxs:
+        ch = _fan_channel(idx)
+        if ch is None or not ch["controllable"]:
+            continue
+        prev_enable = read_int_file(ch["path_enable"])
+        prev_duty = read_int_file(ch["path_pwm"])
+        try:
+            with open(ch["path_enable"], "w") as fh:
+                fh.write(str(ch["manual"]))
+            with open(ch["path_pwm"], "w") as fh:
+                fh.write("255")
+        except Exception:
+            pass
+        try:
+            time.sleep(min(5.0, max(0.5, settle)))
+        except Exception:
+            pass
+        hpath = os.path.join("/sys/class/hwmon", ch["hwmon"])
+        dpath = os.path.join(hpath, "device") if os.path.isdir(os.path.join(hpath, "device")) else ""
+        rpm = read_int_file(_hwmon_resolve(hpath, dpath, "fan" + ch["num"] + "_input"))
+        # 还原：优先还原探测前的 enable/duty（探测前本进程未接管即为 BIOS/当前态，安全交还）
+        try:
+            with open(ch["path_pwm"], "w") as fh:
+                fh.write(str(prev_duty if prev_duty is not None else 255))
+            with open(ch["path_enable"], "w") as fh:
+                fh.write(str(prev_enable if prev_enable is not None else ch["auto"]))
+        except Exception:
+            pass
+        _FAN.touched.add(idx)
+        out.append({"idx": idx, "name": ch["name"], "rpm": rpm,
+                    "has_fan": rpm is not None and rpm > 0})
+    return out
+
+
+def _hwmon_fans():
+    """枚举 /sys/class/hwmon 下所有风扇通道（供控制面板）：合并初始化元数据与实时读数。
+
+    元数据（path/chip/auto/controllable）来自 get_fan_channels() 的硬件检测；
+    rpm/duty/enable 为每次实时读取，反映当前实际状态。
+    """
+    fans = []
+    for ch in get_fan_channels():
+        hpath = os.path.join("/sys/class/hwmon", ch["hwmon"])
+        dpath = os.path.join(hpath, "device") if os.path.isdir(os.path.join(hpath, "device")) else ""
+        rpm = read_int_file(_hwmon_resolve(hpath, dpath, "fan" + ch["num"] + "_input"))
+        duty = read_int_file(ch["path_pwm"])
+        enable = read_int_file(ch["path_enable"])
+        fans.append({
+            "idx": ch["idx"], "hwmon": ch["hwmon"], "chip": ch["chip"], "num": ch["num"],
+            "name": ch["name"], "rpm": rpm, "duty": duty, "enable": enable,
+            "auto": ch["auto"], "controllable": ch["controllable"], "path": ch["path_pwm"],
+        })
     return fans
 
 
@@ -2002,39 +2248,230 @@ def _ec_hwm_fans():
 
 
 def fan_set(idx, duty):
-    """设置指定风扇通道占空比 0-255（idx 对应 _hwmon_fans 枚举序号）。"""
-    fans = _hwmon_fans()
-    if idx < 0 or idx >= len(fans):
+    """设置指定风扇通道占空比 0-255（idx 对应某控制器通道序号）。"""
+    ch = _fan_channel(idx)
+    if ch is None:
         return {"ok": False, "error": "无效的风扇序号"}
-    f = fans[idx]
+    if not ch["controllable"]:
+        return {"ok": False, "error": "控制器 %s 内核已禁用 PWM 写入，无法手动调速" % ch["chip"]}
     try:
         duty = max(0, min(255, int(duty)))
     except Exception:
         return {"ok": False, "error": "非法占空比"}
     try:
-        with open(f["path"], "w") as fh:
+        # 手动调速前先切到 manual 模式（pwmN_enable=芯片 manual 档位，通常 1）：自动模式
+        # 下直接写 pwmN 通常会被忽略，导致拖动滑块无效。切到 manual 后写入才生效；
+        # 不支持 manual 的芯片写 manual 会失败，忽略后照常写 pwm（由硬件决定行为）。
+        try:
+            with open(ch["path_enable"], "w") as fh:
+                fh.write(str(ch["manual"]))
+        except Exception:
+            pass
+        with open(ch["path_pwm"], "w") as fh:
             fh.write(str(duty))
-        return {"ok": True, "idx": idx, "duty": duty, "name": f["name"],
-                "note": "已设置 %s 占空比 %d" % (f["name"], duty)}
+        _FAN.touched.add(idx)
+        return {"ok": True, "idx": idx, "duty": duty, "name": ch["name"],
+                "note": "已设置 %s 占空比 %d（手动模式）" % (ch["name"], duty)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
-def fan_enable_auto(idx):
-    """恢复该风扇为自动温控（pwmN_enable=2）。"""
-    fans = _hwmon_fans()
-    if idx < 0 or idx >= len(fans):
-        return {"ok": False, "error": "无效的风扇序号"}
-    f = fans[idx]
-    hpath = os.path.join("/sys/class/hwmon", f["hwmon"])
-    dpath = os.path.join(hpath, "device")
-    if not os.path.isdir(dpath):
-        dpath = ""
-    epath = _hwmon_resolve(hpath, dpath, "pwm" + f["num"] + "_enable")
+def _fan_write(path, value):
+    """写 sysfs 风扇节点（自动去除换行，兼容部分驱动的严格解析）。"""
+    with open(path, "w") as fh:
+        fh.write(str(int(value)))
+
+
+def fan_restore_channel(idx, prefer_snapshot=True):
+    """把单个通道交还 BIOS 控制，三级降级（精确度从高到低）。
+
+    对齐 fn-fancontrol 的 restore_channel()：
+    1. 还原本进程接管前记录的 BIOS 原始状态（enable/duty 快照）——最精确，
+       连「BIOS 故意让某通道跑手动档」也能原样还原，而不是一刀切成自动；
+    2. 写芯片自身的自动温控档位（profile.auto），由 BIOS/EC 固件接管；
+    3. 驱动不支持自动模式时（如新型 ITE 芯片），写 manual + pwm=255 全速兜底，
+       保证风扇不会被落在低速。
+
+    返回描述实际生效动作的字符串；不可控或出错时抛异常。
+    """
+    ch = _fan_channel(idx)
+    if ch is None:
+        raise ValueError("无效的风扇序号")
+    if not ch["controllable"]:
+        raise ValueError("控制器 %s 内核已禁用 PWM 写入" % ch["chip"])
+    orig = ch.get("original") or {}
+    # 第 1 级：还原接管前的 BIOS 快照
+    if prefer_snapshot:
+        enable, duty = orig.get("enable"), orig.get("duty")
+        if duty is not None:
+            try:
+                _fan_write(ch["path_pwm"], max(0, min(255, int(duty))))
+                if enable is not None:
+                    _fan_write(ch["path_enable"], int(enable))
+                return "已还原 BIOS 接管前状态（enable=%s duty=%s）" % (enable, duty)
+            except Exception:
+                pass  # 快照不可用，降级到自动档位
+    # 第 2 级：芯片自动档位
     try:
-        with open(epath, "w") as fh:
-            fh.write("2")
-        return {"ok": True, "idx": idx, "note": "已恢复自动温控"}
+        _fan_write(ch["path_enable"], ch["auto"])
+        return "芯片自动模式（%s auto=%d）" % (ch["chip"], ch["auto"])
+    except Exception:
+        pass
+    # 第 3 级：全速兜底
+    _fan_write(ch["path_enable"], ch["manual"])
+    _fan_write(ch["path_pwm"], 255)
+    return "全速兜底（驱动无自动档位，pwm=255）"
+
+
+def fan_bios(idx, prefer_snapshot=True):
+    """交还 BIOS 控制：三级降级（快照还原 → 芯片自动档 → 全速兜底）。
+
+    对齐 fn-fancontrol 的 restore_channel()：不同芯片 pwmN_enable 的自动档位常量不同
+    （NCT6775/679x = 5 Smart Fan IV，IT87/通用 = 2），写错值反而会设成全速或无效模式，
+    故按初始化时识别的芯片写入正确自动档位；并优先还原接管前的 BIOS 快照以保真。
+    """
+    ch = _fan_channel(idx)
+    if ch is None:
+        return {"ok": False, "error": "无效的风扇序号"}
+    if not ch["controllable"]:
+        return {"ok": False, "error": "控制器 %s 内核已禁用 PWM 写入，无法交还 BIOS 控制" % ch["chip"]}
+    try:
+        applied = fan_restore_channel(idx, prefer_snapshot)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    _FAN.touched.add(idx)  # 交还后仍按 original 幂等还原，无害
+    return {"ok": True, "idx": idx, "applied": applied,
+            "note": "已交还主板 BIOS 控制（%s）" % applied}
+
+
+def fan_restore_all(prefer_snapshot=True):
+    """一键交还所有可控风扇通道到 BIOS 控制（三级降级）。
+
+    对齐 fn-fancontrol 的 restore_all_to_auto()：遍历所有 controllable 通道交还安全态。
+    """
+    restored, skipped, errors = [], [], []
+    for ch in get_fan_channels():
+        if not ch["controllable"]:
+            skipped.append(ch["idx"])
+            continue
+        try:
+            applied = fan_restore_channel(ch["idx"], prefer_snapshot)
+            restored.append({"idx": ch["idx"], "name": ch["name"], "applied": applied})
+        except Exception as e:
+            errors.append({"idx": ch["idx"], "name": ch["name"], "error": str(e)})
+    note = "已交还 %d 个通道到 BIOS 控制" % len(restored)
+    if errors:
+        note += "，%d 个失败" % len(errors)
+    if skipped:
+        note += "，%d 个不可控已跳过" % len(skipped)
+    return {"ok": not errors, "restored": restored, "skipped": skipped, "errors": errors, "note": note}
+
+
+def fan_live_snapshot():
+    """实时读取风扇转速 / 占空比 / 档位。
+
+    直读 sysfs（绕过 collector 采集缓存），供前端「实时检测」高频轮询，
+    让转速变化及时可见，而不必等全局采集间隔。
+    """
+    out = []
+    for ch in get_fan_channels():
+        hpath = os.path.join("/sys/class/hwmon", ch["hwmon"])
+        dpath = os.path.join(hpath, "device") if os.path.isdir(os.path.join(hpath, "device")) else ""
+        out.append({
+            "idx": ch["idx"],
+            "rpm": read_int_file(_hwmon_resolve(hpath, dpath, "fan" + ch["num"] + "_input")),
+            "duty": read_int_file(ch["path_pwm"]),
+            "enable": read_int_file(ch["path_enable"]),
+            "auto": ch["auto"], "manual": ch["manual"],
+        })
+    return {"ok": True, "ts": int(time.time()), "fans": out}
+
+
+def _fan_disk_temp(name):
+    """读取指定硬盘温度（摄氏度）；供曲线温度源按需读取（可能唤醒该盘，属预期）。
+
+    name 形如 "sda"（与 read_temps 的 disks[].name 一致）。
+    """
+    if not name:
+        return None
+    hwdir = os.path.join("/sys/block", name, "device", "hwmon")
+    if os.path.isdir(hwdir):
+        for hw in sorted(os.listdir(hwdir)):
+            tfile = os.path.join(hwdir, hw, "temp1_input")
+            if os.path.isfile(tfile):
+                t = read_int_file(tfile)
+                if t > 0:
+                    return round(t / 1000.0, 1)
+    return smartctl_temp(name)
+
+
+def fan_eval_curve(curve, temp):
+    """按温度插值计算目标占空比（%）。
+
+    curve: {src, points:[[temp°C, duty%], ...], min_duty, max_duty}
+    返回 0-100 的浮点占空比；temp 为 None 或无有效拐点时返回 None（调用方跳过）。
+    拐点按温度升序线性插值；低于首点取首点占空比，高于末点取末点占空比；
+    最终用 min_duty/max_duty 夹取（未提供则不限）。
+    """
+    if temp is None:
+        return None
+    norm = []
+    for p in (curve or {}).get("points") or []:
+        try:
+            tt = float(p[0])
+            dd = float(p[1])
+        except Exception:
+            continue
+        if dd < 0:
+            dd = 0
+        elif dd > 100:
+            dd = 100
+        norm.append((tt, dd))
+    if not norm:
+        return None
+    norm.sort(key=lambda x: x[0])
+    if temp <= norm[0][0]:
+        d = norm[0][1]
+    elif temp >= norm[-1][0]:
+        d = norm[-1][1]
+    else:
+        d = norm[-1][1]
+        for i in range(1, len(norm)):
+            if temp <= norm[i][0]:
+                t0, d0 = norm[i - 1]
+                t1, d1 = norm[i]
+                d = d1 if t1 == t0 else d0 + (d1 - d0) * (temp - t0) / (t1 - t0)
+                break
+    mind = (curve or {}).get("min_duty")
+    maxd = (curve or {}).get("max_duty")
+    if mind is not None:
+        d = max(d, float(mind))
+    if maxd is not None:
+        d = min(d, float(maxd))
+    return max(0.0, min(100.0, round(d, 1)))
+
+
+def fan_apply_curve(idx, duty_pct):
+    """按曲线目标占空比（%）写 PWM；仅首次进入曲线模式时写一次 manual enable。
+
+    写入即登记 _FAN.touched，停机时由 restore_fan_hardware 还原回 BIOS 原始状态。
+    """
+    ch = _fan_channel(idx)
+    if ch is None:
+        return {"ok": False, "error": "无效的风扇序号"}
+    if not ch["controllable"]:
+        return {"ok": False, "error": "控制器 %s 内核已禁用 PWM 写入，无法按曲线调速" % ch["chip"]}
+    duty255 = max(0, min(255, int(round(duty_pct / 100.0 * 255))))
+    try:
+        # 仅首次为曲线模式写 manual enable（避免每个周期重复写 pwmN_enable）
+        if idx not in _FAN.curve_enable_written:
+            with open(ch["path_enable"], "w") as fh:
+                fh.write(str(ch["manual"]))
+            _FAN.curve_enable_written.add(idx)
+        with open(ch["path_pwm"], "w") as fh:
+            fh.write(str(duty255))
+        _FAN.touched.add(idx)
+        return {"ok": True, "idx": idx, "duty": duty255}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -2273,9 +2710,10 @@ def smartctl_temp(dev):
     return None
 
 
-def read_temps():
+def read_temps(include_disks=True):
     """读取 CPU / 主板 / 硬盘温度（摄氏度）。
     返回 {"cpu": 数值或None, "system": 数值或None, "disks": [{"name","temp"}]}
+    include_disks=False 时跳过硬盘（风扇曲线循环每数秒调用一次，避免唤醒休眠盘）。
     """
     temps = {"cpu": None, "system": None, "disks": []}
     # ---- CPU / 主板 thermal zone ----
@@ -2307,37 +2745,38 @@ def read_temps():
                     if t > 0:
                         temps["cpu"] = round(t / 1000.0, 1)
                         break
-    # ---- 硬盘温度 ----
-    # 休眠保护：已 STANDBY 的硬盘跳过 hwmon drivetemp 读取（旧内核该读取会
-    # 唤醒硬盘）与 smartctl 兜底，沿用上次活跃时缓存的温度；休眠中的盘温度
-    # 不变，展示缓存值不影响面板。
-    states = disk_power_states()
-    try:
-        for blk in sorted(os.listdir("/sys/block")):
-            if not _WHOLE_DISK_RE.match(blk):
-                continue
-            if states.get(blk) == "standby":
-                cached = _DISK_TEMP_CACHE.get(blk)
-                if cached is not None:
-                    temps["disks"].append({"name": blk, "temp": cached})
-                continue
-            temp = None
-            hwdir = os.path.join("/sys/block", blk, "device", "hwmon")
-            if os.path.isdir(hwdir):
-                for hw in sorted(os.listdir(hwdir)):
-                    tfile = os.path.join(hwdir, hw, "temp1_input")
-                    if os.path.isfile(tfile):
-                        t = read_int_file(tfile)
-                        if t > 0:
-                            temp = round(t / 1000.0, 1)
-                            break
-            if temp is None:
-                temp = smartctl_temp(blk)
-            if temp:
-                _DISK_TEMP_CACHE[blk] = temp
-                temps["disks"].append({"name": blk, "temp": temp})
-    except Exception:
-        pass
+    # ---- 硬盘温度 ----（风扇曲线按需读取时 include_disks=False，避免循环唤醒休眠盘）
+    if include_disks:
+        # 休眠保护：已 STANDBY 的硬盘跳过 hwmon drivetemp 读取（旧内核该读取会
+        # 唤醒硬盘）与 smartctl 兜底，沿用上次活跃时缓存的温度；休眠中的盘温度
+        # 不变，展示缓存值不影响面板。
+        states = disk_power_states()
+        try:
+            for blk in sorted(os.listdir("/sys/block")):
+                if not _WHOLE_DISK_RE.match(blk):
+                    continue
+                if states.get(blk) == "standby":
+                    cached = _DISK_TEMP_CACHE.get(blk)
+                    if cached is not None:
+                        temps["disks"].append({"name": blk, "temp": cached})
+                    continue
+                temp = None
+                hwdir = os.path.join("/sys/block", blk, "device", "hwmon")
+                if os.path.isdir(hwdir):
+                    for hw in sorted(os.listdir(hwdir)):
+                        tfile = os.path.join(hwdir, hw, "temp1_input")
+                        if os.path.isfile(tfile):
+                            t = read_int_file(tfile)
+                            if t > 0:
+                                temp = round(t / 1000.0, 1)
+                                break
+                if temp is None:
+                    temp = smartctl_temp(blk)
+                if temp:
+                    _DISK_TEMP_CACHE[blk] = temp
+                    temps["disks"].append({"name": blk, "temp": temp})
+        except Exception:
+            pass
     return temps
 
 
@@ -2725,7 +3164,7 @@ def fetch_weather(city_override=None):
     import json as _json
 
     def _get(url, timeout=8):
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 fnmonitor"})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 fnmonitorpro"})
         return _json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8", "ignore"))
 
     try:
@@ -3414,6 +3853,11 @@ class Collector(threading.Thread):
         self._last_sensors_ts = 0.0
         self._last_fans = []
         self._last_fans_ts = 0.0
+        # 启动即执行风扇硬件检测与初始化：识别控制器芯片、建立通道元数据、记录 BIOS 原始状态
+        try:
+            get_fan_channels()
+        except Exception:
+            pass
         self._last_power = {"ok": False}
         self._last_power_ts = 0.0
         self._cpu_topo = None  # CPU 拓扑（物理核/逻辑线程/插槽），运行期不变只解析一次
@@ -3426,8 +3870,15 @@ class Collector(threading.Thread):
         # 数据盘休眠期间暂存未落盘的历史采样行（见 _tick 休眠保护）
         self._pending_rows = []
         self._cfg_mtime = 0.0
+        # 曲线控制：每通道上次实际写入的占空比（0-255），用于平滑/迟滞，避免频繁抖动
+        self._fan_curve_last = {}
 
     def stop(self):
+        # 进程退出前把本会话改写过的风扇通道还原回 BIOS 接管前的原始状态
+        try:
+            restore_fan_hardware()
+        except Exception:
+            pass
         self._stop.set()
 
     def _reload_config(self):
@@ -3455,6 +3906,11 @@ class Collector(threading.Thread):
 
     def run(self):
         self.db._init()
+        # 风扇曲线控制：独立后台循环，按温度插值周期写 PWM（与采集周期解耦，响应更及时）
+        try:
+            threading.Thread(target=self._fan_curve_loop, daemon=True).start()
+        except Exception:
+            pass
         try:
             self._tick()  # 启动后立即采集一次，避免首屏无数据
         except Exception:
@@ -3464,6 +3920,55 @@ class Collector(threading.Thread):
                 self._tick()
             except Exception:
                 pass
+
+    def _fan_curve_loop(self):
+        """曲线控制后台循环：每 FAN_CURVE_INTERVAL 秒按当前温度评估并应用各曲线通道。"""
+        while not self._stop.wait(FAN_CURVE_INTERVAL):
+            try:
+                self.fan_curve_tick()
+            except Exception:
+                pass
+
+    def fan_curve_tick(self):
+        """评估并应用所有处于「曲线」模式的风扇通道（读温度→插值→写 PWM）。"""
+        modes = self.config.get("fan_mode") or {}
+        curves = self.config.get("fan_curves") or {}
+        if not curves:
+            return
+        temps = read_temps(include_disks=False)  # CPU/主板不读盘，避免唤醒休眠硬盘
+        cpu = temps.get("cpu")
+        system = temps.get("system")
+        for key, curve in curves.items():
+            try:
+                idx = int(key)
+            except Exception:
+                continue
+            if str(modes.get(key, "curve")) != "curve":
+                # 已离开曲线模式：清除 enable 标记与平滑状态，便于重新进入时再写 manual
+                _FAN.curve_enable_written.discard(idx)
+                self._fan_curve_last.pop(idx, None)
+                continue
+            if not curve or not (curve.get("points")):
+                _FAN.curve_enable_written.discard(idx)
+                continue
+            src = str(curve.get("src") or "cpu")
+            if src == "system":
+                temp = system
+            elif src.startswith("disk:"):
+                temp = _fan_disk_temp(src[5:])
+            else:
+                temp = cpu
+            target = fan_eval_curve(curve, temp)
+            if target is None:
+                continue
+            duty255 = int(round(target / 100.0 * 255))
+            last = self._fan_curve_last.get(idx)
+            # 平滑：距上次写入差距小于步进则跳过，抑制小幅振荡
+            if last is not None and abs(duty255 - last) < FAN_CURVE_STEP:
+                continue
+            r = fan_apply_curve(idx, target)
+            if r.get("ok"):
+                self._fan_curve_last[idx] = duty255
 
     def _tick(self):
         self._reload_config()
@@ -3752,9 +4257,26 @@ class Collector(threading.Thread):
 
         # ---- 风扇通道枚举（每 15 秒，供控制面板使用） ----
         if now - self._last_fans_ts >= 15:
-            self._last_fans = _hwmon_fans()
+            fans = _hwmon_fans()
+            self._last_fans = fans
             self._last_fans_ts = now
         snapshot["fans"] = self._last_fans
+        # 把每个风扇当前的控制模式 / 曲线配置并入快照，前端调速面板据此渲染
+        _fan_modes = self.config.get("fan_mode") or {}
+        _fan_curves = self.config.get("fan_curves") or {}
+        _fan_names = self.config.get("fan_names") or {}
+        for _f in snapshot["fans"]:
+            _f["mode"] = str(_fan_modes.get(str(_f["idx"]), "bios"))
+            _fc = _fan_curves.get(str(_f["idx"]))
+            if _fc:
+                _f["curve"] = _fc
+            # 手动命名的风扇（自定义名优先，key 为通道 idx）
+            _custom = _fan_names.get(str(_f["idx"]))
+            if _custom:
+                _f["name"] = str(_custom)
+                _f["auto_named"] = False
+        # 硬件检测向导持久化的「启用通道」列表（config.json fan_enabled）；为空表示全部显示
+        snapshot["fan_enabled"] = self.config.get("fan_enabled")
 
         # ---- 内置应用统计（相册/影视/音乐，每 10 分钟；目录遍历 + 数据库 COUNT 为重操作，手动刷新按钮可即时更新） ----
         # 数据盘休眠时跳过本轮（不更新时间戳，醒来后尽快补采），避免目录扫描唤醒机械硬盘
@@ -3813,7 +4335,7 @@ def _gh_open(url, timeout=30):
         u = (m + url) if m else url
         try:
             return urllib.request.urlopen(
-                urllib.request.Request(u, headers={"User-Agent": "fnmonitor"}), timeout=timeout)
+                urllib.request.Request(u, headers={"User-Agent": "fnmonitorpro"}), timeout=timeout)
         except Exception as e:
             last = e
     raise last
@@ -3862,7 +4384,7 @@ class UpdateManager:
         try:
             req = urllib.request.Request(
                 "https://api.github.com/repos/%s/releases/latest" % UPDATE_REPO,
-                headers={"Accept": "application/vnd.github+json", "User-Agent": "fnmonitor"})
+                headers={"Accept": "application/vnd.github+json", "User-Agent": "fnmonitorpro"})
             with urllib.request.urlopen(req, timeout=10) as r:
                 rel = json.loads(r.read().decode("utf-8", "ignore"))
             latest = str(rel.get("tag_name") or "").lstrip("vV")
@@ -3873,18 +4395,22 @@ class UpdateManager:
             info["published_at"] = str(rel.get("published_at") or "")
             if rel.get("html_url"):
                 info["html_url"] = rel["html_url"]
-            # 选当前架构的 fpk 资产（x86 优先精确匹配，arm 同理）；记录官方 digest 供下载后校验
+            # 选当前架构的 fpk 资产：优先新包名 fnmonitorpro-<ver>-<arch>.fpk，
+            # 回退旧包名 fnmonitor-<ver>-<arch>.fpk（改名过渡期兼容 GitHub 已有资产）
             def _mk_asset(a):
                 return {"name": a.get("name"), "size": int(a.get("size") or 0),
                         "download_url": a.get("browser_download_url"),
                         "digest": str(a.get("digest") or "").replace("sha256:", "")}
-            want = "fnmonitor-%s-%s.fpk" % (latest, arch)
-            for a in rel.get("assets") or []:
-                if str(a.get("name")) == want:
-                    info["asset"] = _mk_asset(a)
+            assets = rel.get("assets") or []
+            for pat in ("fnmonitorpro-%s-%s.fpk" % (latest, arch), "fnmonitor-%s-%s.fpk" % (latest, arch)):
+                for a in assets:
+                    if str(a.get("name")) == pat:
+                        info["asset"] = _mk_asset(a)
+                        break
+                if info["asset"] is not None:
                     break
             if info["asset"] is None:  # 兜底：任一同名平台包
-                for a in rel.get("assets") or []:
+                for a in assets:
                     if str(a.get("name", "")).endswith("-%s.fpk" % arch):
                         info["asset"] = _mk_asset(a)
                         break
@@ -3905,7 +4431,7 @@ class UpdateManager:
     def download_to_nas(self, asset, dest_dir=None):
         """把安装包下载到指定目录（默认 数据目录/update/），自动尝试镜像加速，
         下载后按官方 SHA256 校验。返回 (成功?, 文件路径/错误)。"""
-        name = asset.get("name") or "fnmonitor.fpk"
+        name = asset.get("name") or "fnmonitorpro.fpk"
         url = asset.get("download_url")
         if not url:
             return False, "资产缺少下载地址"
@@ -4019,7 +4545,7 @@ class UpdateManager:
         # target/ 是软链接指向的可执行文件目录。内置更新只覆盖了 target 下的 manifest，
         # 应用基础目录下的 manifest 仍是旧版本，导致应用中心显示版本号不刷新。
         # 这里把新版 manifest / ICON 同步到应用基础目录。
-        app_name = os.environ.get("TRIM_APPNAME", "") or "fnmonitor"
+        app_name = os.environ.get("TRIM_APPNAME", "") or "fnmonitorpro"
         app_base = "/var/apps/%s" % app_name
         if os.path.isdir(app_base) and os.path.abspath(app_base) != os.path.abspath(app_dir):
             for item in ("manifest", "ICON.PNG", "ICON_256.PNG"):
@@ -4057,7 +4583,7 @@ class UpdateManager:
 # HTTP 服务
 # ---------------------------------------------------------------------------
 class MonitorApp:
-    def __init__(self, data_dir, config, host="0.0.0.0", port=8777, cfg_dir=None):
+    def __init__(self, data_dir, config, host="0.0.0.0", port=8778, cfg_dir=None):
         self.data_dir = data_dir
         self._cfg_dir = cfg_dir or data_dir  # 配置（config.json）固定写默认目录，data_dir 只存数据文件
         self.config = config
@@ -4230,7 +4756,7 @@ class MonitorApp:
                     if fmt == "html":
                         body = app.api_report_html()
                         self._download(body, "text/html; charset=utf-8",
-                                       "fnmonitor_report_%s.html" % time.strftime("%Y%m%d_%H%M%S"))
+                                       "fnmonitorpro_report_%s.html" % time.strftime("%Y%m%d_%H%M%S"))
                     else:
                         self._json(app.api_report())
                     return
@@ -4239,22 +4765,22 @@ class MonitorApp:
                     if export_type == "status":
                         body = json.dumps(app.api_export_status(), ensure_ascii=False, indent=2).encode("utf-8")
                         self._download(body, "application/json; charset=utf-8",
-                                       "fnmonitor_status_%s.json" % time.strftime("%Y%m%d_%H%M%S"))
+                                       "fnmonitorpro_status_%s.json" % time.strftime("%Y%m%d_%H%M%S"))
                     elif export_type == "traffic":
                         range_ = (qs.get("range") or ["7d"])[0]
                         body = app.api_traffic_csv(range_)
                         self._download(body, "text/csv; charset=utf-8",
-                                       "fnmonitor_traffic_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
+                                       "fnmonitorpro_traffic_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
                     elif export_type == "power":
                         range_ = (qs.get("range") or ["7d"])[0]
                         body = app.api_power_csv(range_)
                         self._download(body, "text/csv; charset=utf-8",
-                                       "fnmonitor_power_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
+                                       "fnmonitorpro_power_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
                     else:
                         range_ = (qs.get("range") or ["7d"])[0]
                         body = app.api_export_history_csv(range_)
                         self._download(body, "text/csv; charset=utf-8",
-                                       "fnmonitor_history_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
+                                       "fnmonitorpro_history_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
                     return
                 self.send_error(404, "Not Found")
 
@@ -4646,7 +5172,7 @@ class MonitorApp:
         clean = {}
         # 注意：layoutVersion / tab 必须一并持久化，否则前端 loadUI 会因
         # 服务器端 layoutVersion 恒为 0 < 本地版本而每次刷新重置布局
-        for k in ("theme", "layoutVersion", "panelOrder", "hiddenPanels", "hiddenMods", "range", "tab", "sideCollapsed", "fontScale"):
+        for k in ("theme", "layoutVersion", "panelOrder", "hiddenPanels", "hiddenMods", "range", "tab", "sideCollapsed", "fontScale", "fanSize"):
             if k in data:
                 clean[k] = data[k]
         path = self._ui_config_path()
@@ -4766,19 +5292,19 @@ class MonitorApp:
             if changed_port:
                 try:
                     ok_p, msg_p = apply_launcher_entry(port=int(cur.get("port") or 0))
-                    print("[fnmonitor] 桌面入口端口同步: %s" % msg_p)
+                    print("[fnmonitorpro] 桌面入口端口同步: %s" % msg_p)
                 except Exception as e:
-                    print("[fnmonitor] 桌面入口端口同步异常: %s" % e)
+                    print("[fnmonitorpro] 桌面入口端口同步异常: %s" % e)
             if new_mode in ("iframe", "url"):
                 try:
                     launcher_ok, launcher_msg = apply_launcher_entry(mode=new_mode, port=int(cur.get("port") or 0))
                 except Exception as e:
                     launcher_ok, launcher_msg = False, str(e)
-                print("[fnmonitor] 桌面入口配置: %s" % launcher_msg)
+                print("[fnmonitorpro] 桌面入口配置: %s" % launcher_msg)
             self.collector._cfg_mtime = 0.0  # 强制采集线程下次重载
             note_parts = []
             if changed_port:
-                note_parts.append("端口修改需在应用中心重启「飞牛监控」后生效")
+                note_parts.append("端口修改需在应用中心重启「飞牛监控pro」后生效")
             if open_mode_changed:
                 note_parts.append("打开方式已切换，刷新飞牛桌面页面（F5）或重新登录后，点击桌面图标将直接按「%s」打开"
                                   % ("飞牛窗口" if new_mode == "iframe" else "浏览器新标签页"))
@@ -5135,7 +5661,7 @@ class MonitorApp:
             else:
                 alerts_html = '<div style="color:#10b981">✓ 当前无活动告警</div>'
             html = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
-<title>飞牛监控 健康报告</title><style>
+<title>飞牛监控pro 健康报告</title><style>
 body{font-family:system-ui,'PingFang SC',sans-serif;background:#f1f5f9;margin:0;padding:24px;color:#0f172a}
 .card{background:#fff;border-radius:16px;padding:24px;margin:16px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;color:#334155;margin:0 0 12px}
@@ -5143,7 +5669,7 @@ table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 12px
 th{color:#64748b;font-weight:600;font-size:13px}.meta{color:#94a3b8;font-size:13px}
 .badge{display:inline-block;background:#ecfdf5;color:#059669;border-radius:999px;padding:2px 10px;font-size:12px}
 </style></head><body>
-<h1>飞牛监控 · 健康报告</h1><div class="meta">生成时间：%(t)s ｜ 版本 v%(v)s</div>
+<h1>飞牛监控pro · 健康报告</h1><div class="meta">生成时间：%(t)s ｜ 版本 v%(v)s</div>
 <div class="card"><h2>告警摘要</h2>%(alerts)s</div>
 <div class="card"><h2>指标统计（最近 7 天）</h2>
 <table><tr><th>指标</th><th>平均</th><th>最大</th><th>最近</th><th>样本数</th></tr>%(rows)s</table></div>
@@ -5159,13 +5685,177 @@ th{color:#64748b;font-weight:600;font-size:13px}.meta{color:#94a3b8;font-size:13
                     "</body></html>").encode("utf-8")
 
     def api_fan_set(self, data):
-        """风扇控制：设置占空比或恢复自动温控。{idx, duty} 或 {idx, auto:true}。"""
+        """风扇控制 / 硬件检测与初始化向导。
+
+        - {action:"hardware"} 返回检测到的控制器与通道（含实时转速、芯片档位、BIOS 原始状态、pwmN_temp_sel）
+        - {action:"rescan"}   重新扫描硬件（force 重检）后返回同上
+        - {action:"probe"}    主动检测：逐个通道全速试转，识别哪些确有风扇
+        - {action:"save", enabled:[idx...]}  持久化「启用通道」到 config.json
+        - {action:"restore_all", snapshot:true} 一键把所有可控通道交还 BIOS（三级降级）
+        - {action:"rename", idx, name} 手动命名风扇（name 为空恢复默认）
+        - {action:"live"}       实时转速/占空比快照（直读 sysfs，不经 collector 缓存）
+        - {action:"save_curve", mode:{idx:"bios"|"manual"|"curve"}, curves:{idx:{src,points,min_duty,max_duty}}}
+                持久化每通道控制模式与曲线；离开曲线模式的通道清除 enable 标记并立即生效
+        - {action:"curve_status"}  返回各曲线通道当前温度与插值目标占空比（前端试算/展示）
+        - {idx, duty}         手动调速（enable=芯片 manual 档）
+        - {idx, bios:true}    交还主板 BIOS/EC 固件接管（三级降级，见 fan_bios）
+        """
+        action = str(data.get("action") or "set").lower()
+        if action == "hardware":
+            try:
+                return fan_hardware_info(self.config.get("fan_names"))
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "rescan":
+            try:
+                get_fan_channels(force=True)
+                return fan_hardware_info(self.config.get("fan_names"))
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "probe":
+            idxs = data.get("idxs")
+            try:
+                return {"ok": True, "results": fan_probe(idxs)}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "save":
+            enabled = data.get("enabled")
+            try:
+                enabled = [int(x) for x in enabled] if enabled else []
+            except Exception:
+                enabled = []
+            try:
+                path = os.path.join(self._cfg_dir, "config.json")
+                try:
+                    with open(path, "r", errors="ignore") as f:
+                        cur = json.load(f)
+                except Exception:
+                    cur = {}
+                cur["fan_enabled"] = enabled
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(cur, f, ensure_ascii=False, indent=1)
+                self.config["fan_enabled"] = enabled
+                return {"ok": True, "enabled": enabled}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "save_curve":
+            mode = data.get("mode") or {}
+            curves = data.get("curves") or {}
+            try:
+                path = os.path.join(self._cfg_dir, "config.json")
+                try:
+                    with open(path, "r", errors="ignore") as f:
+                        cur = json.load(f)
+                except Exception:
+                    cur = {}
+                cm = dict(cur.get("fan_mode") or {})
+                cc = dict(cur.get("fan_curves") or {})
+                for k, v in mode.items():
+                    cm[str(k)] = str(v)
+                for k, v in curves.items():
+                    if v is None:
+                        cc.pop(str(k), None)
+                    else:
+                        cc[str(k)] = v
+                cur["fan_mode"] = cm
+                cur["fan_curves"] = cc
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(cur, f, ensure_ascii=False, indent=1)
+                self.config["fan_mode"] = cm
+                self.config["fan_curves"] = cc
+                # 离开曲线模式的通道：清除 enable 标记与平滑状态，便于重新进入时再写 manual
+                for k, v in mode.items():
+                    if str(v) != "curve":
+                        try:
+                            _FAN.curve_enable_written.discard(int(k))
+                        except Exception:
+                            pass
+                        if self.collector:
+                            try:
+                                self.collector._fan_curve_last.pop(int(k), None)
+                            except Exception:
+                                pass
+                # 立即评估一次，无需等待下一个循环周期
+                if self.collector:
+                    try:
+                        self.collector.fan_curve_tick()
+                    except Exception:
+                        pass
+                return {"ok": True, "mode": cm, "curves": cc}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "curve_status":
+            try:
+                temps = read_temps(include_disks=False)
+                modes = self.config.get("fan_mode") or {}
+                curves = self.config.get("fan_curves") or {}
+                out = {}
+                for key, curve in curves.items():
+                    if str(modes.get(key, "curve")) != "curve" or not curve:
+                        continue
+                    src = str(curve.get("src") or "cpu")
+                    if src == "system":
+                        temp = temps.get("system")
+                    elif src.startswith("disk:"):
+                        temp = _fan_disk_temp(src[5:])
+                    else:
+                        temp = temps.get("cpu")
+                    target = fan_eval_curve(curve, temp)
+                    out[str(key)] = {
+                        "src": src, "temp": temp,
+                        "target_pct": target,
+                        "target_duty": (int(round(target / 100.0 * 255)) if target is not None else None),
+                    }
+                return {"ok": True, "status": out}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "restore_all":
+            # 一键交还所有可控风扇到 BIOS 控制（对齐 fn-fancontrol restore-auto）
+            try:
+                return fan_restore_all(bool(data.get("snapshot", True)))
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "rename":
+            # 手动命名风扇：name 为空则恢复默认（驱动 label / 芯片名兜底）
+            try:
+                idx = int(data.get("idx", -1))
+            except Exception:
+                return {"ok": False, "error": "缺少风扇序号"}
+            if idx < 0 or _fan_channel(idx) is None:
+                return {"ok": False, "error": "无效的风扇序号"}
+            name = str(data.get("name") or "").strip()[:40]
+            path = os.path.join(self._cfg_dir, "config.json")
+            try:
+                try:
+                    with open(path, "r", errors="ignore") as f:
+                        cur = json.load(f)
+                except Exception:
+                    cur = {}
+                names = dict(cur.get("fan_names") or {})
+                if name:
+                    names[str(idx)] = name
+                else:
+                    names.pop(str(idx), None)
+                cur["fan_names"] = names
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(cur, f, ensure_ascii=False, indent=1)
+                self.config["fan_names"] = names
+                return {"ok": True, "idx": idx, "name": name, "names": names}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "live":
+            # 实时快照：直读 sysfs，不走 collector 缓存（前端「实时检测」高频轮询）
+            try:
+                return fan_live_snapshot()
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        # 默认：手动调速 / 交还 BIOS
         try:
             idx = int(data.get("idx", -1))
         except Exception:
             return {"ok": False, "error": "缺少风扇序号"}
-        if data.get("auto"):
-            return fan_enable_auto(idx)
+        if data.get("bios") or data.get("auto"):
+            return fan_bios(idx)
         duty = data.get("duty")
         if duty is None:
             return {"ok": False, "error": "缺少占空比"}
@@ -5308,7 +5998,7 @@ def _launcher_cfg_candidates():
     对桌面无效（v2.16.0 切换不生效的根因）。返回 [(路径, 是否允许新建), ...]，
     允许新建仅限 /var/apps 基础目录（缺失时用应用内原始配置补建）。"""
     app_dir = os.path.dirname(os.path.abspath(__file__))
-    app_name = os.environ.get("TRIM_APPNAME", "") or "fnmonitor"
+    app_name = os.environ.get("TRIM_APPNAME", "") or "fnmonitorpro"
     cands = [(os.path.join(app_dir, "ui", "config"), True)]
     seen = {os.path.abspath(os.path.normpath(c[0])) for c in cands}
     bases = [os.path.dirname(app_dir),           # target 的父目录即基础目录的布局
@@ -5584,10 +6274,10 @@ class DualStackHTTPServer(ThreadingHTTPServer):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="fnMonitor - fnOS 系统监控后端")
+    ap = argparse.ArgumentParser(description="fnMonitor Pro - fnOS 系统监控后端")
     ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, default=8777)
-    ap.add_argument("--data-dir", default=os.environ.get("TRIM_PKGVAR", "/tmp/fnmonitor-data"))
+    ap.add_argument("--port", type=int, default=8778)
+    ap.add_argument("--data-dir", default=os.environ.get("TRIM_PKGVAR", "/tmp/fnmonitorpro-data"))
     args = ap.parse_args()
 
     os.makedirs(args.data_dir, exist_ok=True)
@@ -5614,7 +6304,7 @@ def main():
         # 目录创建/迁移失败绝不能静默继续：否则 monitor.db 会因目录不存在
         # 而 "unable to open database file"，历史趋势将永远为空。回退到默认数据目录。
         traceback.print_exc()
-        print("[fnmonitor] 自定义数据目录不可用，回退到 %s" % original_dir)
+        print("[fnmonitorpro] 自定义数据目录不可用，回退到 %s" % original_dir)
         args.data_dir = original_dir
     # 配置文件里指定了端口则优先（网页设置修改端口后重启生效）
     port = int(config.get("port") or 0) or args.port
@@ -5626,9 +6316,9 @@ def main():
         _m = str(config.get("open_mode") or "").lower()
         ok_l, msg_l = apply_launcher_entry(mode=(_m or None), port=port)
         if not ok_l:
-            print("[fnmonitor] 桌面入口配置同步失败: %s" % msg_l)
+            print("[fnmonitorpro] 桌面入口配置同步失败: %s" % msg_l)
     except Exception as e:
-        print("[fnmonitor] 桌面入口配置同步异常: %s" % e)
+        print("[fnmonitorpro] 桌面入口配置同步异常: %s" % e)
 
     app = MonitorApp(args.data_dir, config, args.host, port, cfg_dir=original_dir)
     handler = app.make_handler()

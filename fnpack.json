@@ -3,12 +3,12 @@
  "source_info": {
   "name": "MisiteQ 应用源",
   "author": "MisiteQ",
-  "homepage": "https://github.com/MisiteQ/fnmonitor",
-  "description": "飞牛监控 fnmonitor 官方发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。"
+  "homepage": "https://github.com/RONGLINC93/fnmonitor",
+  "description": "飞牛监控pro fnmonitor 官方发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。"
  },
  "apps": {
-  "fnmonitor": {
-   "display_name": "飞牛监控",
+  "fnmonitorpro": {
+   "display_name": "飞牛监控pro",
    "desc": "<b>fnOS 系统监控面板</b>：实时监控 CPU、内存、磁盘、网络、温度、功耗与 GPU，Docker 容器资源占用，端口占用与内置应用统计，支持历史趋势记录与数据持久化。<br><br>🏠 总览仪表盘（系统资源 + 硬盘 + 趋势合并一页）| 🐳 Docker · 端口 | ⚙️ 设置",
    "platform": [
     "x86",
@@ -18,14 +18,14 @@
     "系统工具"
    ],
    "icon_url": "https://github.com/MisiteQ/fnmonitor/releases/download/2.16.4/ICON_256.PNG",
-   "readme_url": "https://raw.githubusercontent.com/MisiteQ/fnmonitor/main/README.md",
-   "bug_report_url": "https://github.com/MisiteQ/fnmonitor/issues",
+   "readme_url": "https://raw.githubusercontent.com/RONGLINC93/fnmonitor/main/README.md",
+     "bug_report_url": "https://github.com/RONGLINC93/fnmonitor/issues",
    "maintainer": "Misite齊",
    "maintainer_url": "https://github.com/MisiteQ",
    "run_as": "root",
    "install_type": "",
    "is_docker": false,
-   "service_port": "8777",
+   "service_port": "8778",
    "releases": {
    "2.16.4": {
     "changelog": "v2.16.4<br>① 修复「时间·农历」显示与真实农历不同步：公历转农历查表算法的三处错误——年份回补误用下一年天数（闰月年后日期错 1～2 个月，如 2025-06-25 误显四月廿九、实为六月初一）、月份回补同理且闰月标志未复位（闰月后月份全被错标为「闰」，出现闰七月/闰腊月）、日干支常数错误（+50 应为 +17，日柱长期算错）；已经 1950–2048 共 36000 天逐日连续性自检与权威万年历对照（2026-10-06 = 丙午年八月廿六·癸丑日）",

@@ -45,8 +45,8 @@ try {
         [System.IO.File]::WriteAllText($manifestPath, $swapped, $utf8NoBom)
         & $fnpack build
         if ($LASTEXITCODE -ne 0) { throw "fnpack build ($plat) 失败" }
-        $out = "fnmonitor-$version-$plat.fpk"
-        Move-Item -Force "fnmonitor.fpk" $out
+        $out = "fnmonitorpro-$version-$plat.fpk"
+        Move-Item -Force "fnmonitorpro.fpk" $out
         Write-Host "  -> $out" -ForegroundColor Green
     }
 }
@@ -57,6 +57,6 @@ finally {
 
 Write-Host ""
 Write-Host "打包完成！" -ForegroundColor Green
-Write-Host "  fnmonitor-$version-x86.fpk （x86 机型）" -ForegroundColor Green
-Write-Host "  fnmonitor-$version-arm.fpk （arm64 机型）" -ForegroundColor Green
+Write-Host "  fnmonitorpro-$version-x86.fpk （x86 机型）" -ForegroundColor Green
+Write-Host "  fnmonitorpro-$version-arm.fpk （arm64 机型）" -ForegroundColor Green
 Write-Host "在飞牛 OS 应用中心 -> 左下角"手动安装" -> 按架构选择 fpk 安装。" -ForegroundColor Green

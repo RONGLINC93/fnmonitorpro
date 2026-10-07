@@ -14,3 +14,5 @@ Thumbs.db
 .trae/
 .vscode/
 .idea/
+fn-fancontrol/
+.env

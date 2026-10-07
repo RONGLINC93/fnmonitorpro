@@ -40,12 +40,12 @@ echo "[4/4] 分别打包 x86 / arm ..."
 for plat in x86 arm; do
     sed "s/^platform=.*/platform=$plat/" "$TMP_MANIFEST" > manifest
     "$FNPACK" build
-    mv -f fnmonitor.fpk "fnmonitor-$VERSION-$plat.fpk"
-    echo "  -> fnmonitor-$VERSION-$plat.fpk"
+    mv -f fnmonitorpro.fpk "fnmonitorpro-$VERSION-$plat.fpk"
+    echo "  -> fnmonitorpro-$VERSION-$plat.fpk"
 done
 
 echo ""
 echo "打包完成！"
-echo "  fnmonitor-$VERSION-x86.fpk （x86 机型）"
-echo "  fnmonitor-$VERSION-arm.fpk （arm64 机型）"
+echo "  fnmonitorpro-$VERSION-x86.fpk （x86 机型）"
+echo "  fnmonitorpro-$VERSION-arm.fpk （arm64 机型）"
 echo "将对应架构的 .fpk 拷贝到飞牛 OS，在 应用中心 -> 手动安装 中安装。"

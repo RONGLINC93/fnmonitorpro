@@ -1,11 +1,11 @@
 {
     ".url": {
-        "fnmonitor.Application": {
-            "title": "飞牛监控",
+        "fnmonitorpro.Application": {
+            "title": "飞牛监控pro",
             "icon": "images/icon-{0}.png",
-            "type": "iframe",
+            "type": "url",
             "protocol": "http",
-            "port": "8777",
+            "port": "8778",
             "url": "/",
             "allUsers": true
         }

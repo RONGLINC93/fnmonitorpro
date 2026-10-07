@@ -1,14 +1,14 @@
 #!/bin/bash
 # ============================================================
-# fnmonitor - 飞牛监控 生命周期主脚本
+# fnmonitor - 飞牛监控pro 生命周期主脚本
 # 用法: main {start|stop|restart|status|log [N]}
 # 返回码: 0=成功/运行中  3=未运行  1=失败
 # ============================================================
-APP_NAME="${TRIM_APPNAME:-fnmonitor}"
+APP_NAME="${TRIM_APPNAME:-fnmonitorpro}"
 PID_FILE="${TRIM_PKGVAR}/server.pid"
 LOG_FILE="${TRIM_PKGVAR}/server.log"
 APP_DIR="${TRIM_APPDEST}"
-PORT="${TRIM_SERVICE_PORT:-8777}"
+PORT="${TRIM_SERVICE_PORT:-8778}"
 PYTHON="python3"
 SERVICE_CMD="$PYTHON $APP_DIR/server.py --port $PORT --data-dir $TRIM_PKGVAR"
 

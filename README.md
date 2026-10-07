@@ -1,4 +1,4 @@
-# 飞牛监控 fnMonitor
+# 飞牛监控pro fnMonitor
 
 <p>
   <img alt="Version" src="https://img.shields.io/badge/version-2.16.3-blue">
@@ -11,7 +11,7 @@
 - 当前版本：**v2.16.3**
 - 作者：**Misite齊**
 - 适用平台：fnOS **x86 + arm64**（最低系统版本 0.9.0）
-- 默认端口：**8777**（安装向导可改）
+- 默认端口：**8778**（安装向导可改）
 - 运行身份：**root**（需访问 sysfs 风扇控制、docker.sock、smartctl 与 /proc 跨用户进程信息）
 
 ## ✨ 功能
@@ -25,7 +25,7 @@
 
 ### 方式一：FnDepot 应用源（推荐）
 
-在飞牛 fnOS 上安装 [FnDepot](https://github.com/EWEDLCM/FnDepot) 客户端后，添加作者的应用源即可搜索「飞牛监控」一键安装 / 升级：
+在飞牛 fnOS 上安装 [FnDepot](https://github.com/EWEDLCM/FnDepot) 客户端后，添加作者的应用源即可搜索「飞牛监控pro」一键安装 / 升级：
 
 ```
 https://github.com/MisiteQ/FnDepot
@@ -33,9 +33,9 @@ https://github.com/MisiteQ/FnDepot
 
 ### 方式二：手动安装 FPK
 
-1. 到 [Releases](https://github.com/MisiteQ/fnmonitor/releases) 按 NAS 架构下载：`fnmonitor-2.16.3-x86.fpk`（x86 机型）或 `fnmonitor-2.16.3-arm.fpk`（arm64 机型）
+1. 到 [Releases](https://github.com/RONGLINC93/fnmonitor/releases) 按 NAS 架构下载：`fnmonitor-2.16.3-x86.fpk`（x86 机型）或 `fnmonitor-2.16.3-arm.fpk`（arm64 机型）
 2. 飞牛 OS → **应用中心** → 左下角 **手动安装** → 选择 fpk 文件
-3. 安装后从桌面打开 **飞牛监控**，或直接访问 `http://<NAS_IP>:8777`
+3. 安装后从桌面打开 **飞牛监控pro**，或直接访问 `http://<NAS_IP>:8778`
 
 > 若「手动安装」入口被关闭，SSH 执行：`appcenter-cli manual-install enable`
 
@@ -124,7 +124,7 @@ make_icon.py            应用图标生成（不覆盖已有图标）
 | v2.8.0 | 修复资源趋势历史数据不显示（打开即加载全部历史）；侧边栏支持收起 / 展开；界面美化 |
 | v2.7.1 | 修复小模块显示不全与平板竖屏适配 |
 
-完整日志见 [Releases](https://github.com/MisiteQ/fnmonitor/releases)。
+完整日志见 [Releases](https://github.com/RONGLINC93/fnmonitor/releases)。
 
 ## 📄 许可证
 

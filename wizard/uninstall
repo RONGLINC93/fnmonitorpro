@@ -4,7 +4,7 @@
     "items": [
       {
         "type": "tips",
-        "helpText": "您即将卸载飞牛监控。请选择如何处理监控历史数据："
+        "helpText": "您即将卸载飞牛监控pro。请选择如何处理监控历史数据："
       },
       {
         "type": "radio",

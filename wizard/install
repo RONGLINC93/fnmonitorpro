@@ -1,10 +1,10 @@
 [
   {
-    "stepTitle": "欢迎安装飞牛监控",
+    "stepTitle": "欢迎安装飞牛监控pro",
     "items": [
       {
         "type": "tips",
-        "helpText": "📊 <b>飞牛监控</b> 是一款 fnOS 系统监控面板，帮助您实时掌握 NAS 运行状况。"
+        "helpText": "📊 <b>飞牛监控pro</b> 是一款 fnOS 系统监控面板，帮助您实时掌握 NAS 运行状况。"
       },
       {
         "type": "tips",
@@ -24,7 +24,7 @@
       },
       {
         "type": "tips",
-        "helpText": "ℹ️ <b>访问地址：</b>安装完成后，桌面点击「飞牛监控」图标，或浏览器访问 <code>http://NAS_IP:8777</code>"
+        "helpText": "ℹ️ <b>访问地址：</b>安装完成后，桌面点击「飞牛监控pro」图标，或浏览器访问 <code>http://NAS_IP:8778</code>"
       }
     ]
   }

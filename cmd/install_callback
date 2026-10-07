@@ -5,7 +5,7 @@
 # 2) 初始化数据目录与默认配置
 # 3) 确保脚本可执行权限
 # ============================================================
-APP_BASE="/var/apps/${TRIM_APPNAME:-fnmonitor}"
+APP_BASE="/var/apps/${TRIM_APPNAME:-fnmonitorpro}"
 APP_DEST="${TRIM_APPDEST}"
 
 # 1. UI 软链接（缺了它桌面图标不会出现）

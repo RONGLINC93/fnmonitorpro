@@ -10,7 +10,10 @@ make_icon.py - 生成 fnMonitor 应用图标（PNG）
   app/ui/images/icon-64.png     (64x64,   桌面图标，fnOS 要求连字符命名)
   app/ui/images/icon-256.png    (256x256, 桌面图标，fnOS 要求连字符命名)
 
-图标样式：深蓝渐变圆角底 + 白色监控波形（含半透明面积填充）
+图标样式：默认样式为「深蓝渐变圆角底 + 白色监控波形（含半透明面积填充）」。
+注意：仓库中的 ICON.PNG / ICON_256.PNG 等为用户定制的「显示器 + PRO 角标」图标，
+且 icon-64.png / icon-256.png 分别是真正的 64x64 / 256x256 尺寸。本脚本默认跳过已存在的
+图标，不会覆盖它们；若删掉这些文件后重新生成，将回到上面的默认波形样式（无 PRO 字样）。
 用法：python3 make_icon.py    （在工程根目录执行）
 """
 import zlib
