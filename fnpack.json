@@ -1,10 +1,10 @@
 {
  "schema_version": "2",
  "source_info": {
-  "name": "MisiteQ 应用源",
-  "author": "MisiteQ",
+  "name": "RONGLINC93 应用源",
+  "author": "RONGLINC93",
   "homepage": "https://github.com/RONGLINC93/fnmonitor",
-  "description": "飞牛监控pro fnmonitor 官方发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。"
+  "description": "飞牛监控pro fnmonitor 发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。基于原作者 Misite齊（@MisiteQ）的 fnmonitor 项目修改。"
  },
  "apps": {
   "fnmonitorpro": {
@@ -20,8 +20,8 @@
    "icon_url": "https://github.com/MisiteQ/fnmonitor/releases/download/2.16.4/ICON_256.PNG",
    "readme_url": "https://raw.githubusercontent.com/RONGLINC93/fnmonitor/main/README.md",
      "bug_report_url": "https://github.com/RONGLINC93/fnmonitor/issues",
-   "maintainer": "Misite齊",
-   "maintainer_url": "https://github.com/MisiteQ",
+   "maintainer": "RONGLINC93",
+     "maintainer_url": "https://github.com/RONGLINC93",
    "run_as": "root",
    "install_type": "",
    "is_docker": false,
