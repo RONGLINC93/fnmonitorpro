@@ -76,6 +76,8 @@ def main():
         os.path.join(ROOT, "fnmonitorpro-%s-x86.fpk" % ver),
         os.path.join(ROOT, "fnmonitorpro-%s-arm.fpk" % ver),
     ]
+    # 可选附带资产（存在才上传）：应用图标，供发布源 icon_url 引用
+    extras = [os.path.join(ROOT, "ICON_256.PNG")]
     missing = [p for p in pkgs if not os.path.exists(p)]
     if missing:
         for p in missing:
