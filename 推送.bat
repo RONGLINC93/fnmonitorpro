@@ -76,7 +76,7 @@ if errorlevel 1 (
 echo.
 echo === 4/4 完成 ===
 if defined HAVE_COMMIT (
-  echo [完成] 已提交并推送到 https://github.com/RONGLINC93/fnmonitor
+  echo [完成] 已提交并推送到 https://github.com/RONGLINC93/fnmonitorpro
 ) else (
   echo [完成] 已同步到远程最新
 )

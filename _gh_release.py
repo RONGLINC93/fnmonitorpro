@@ -35,7 +35,7 @@ def repo_slug(cfg):
         tail = url.rstrip("/").split("/")[-2:]
         if len(tail) == 2 and tail[0] and tail[1]:
             return tail[0] + "/" + tail[1].replace(".git", "")
-    return "RONGLINC93/fnmonitor"
+    return "RONGLINC93/fnmonitorpro"
 
 
 def api(url, token, data=None, method=None, ctype="application/json"):

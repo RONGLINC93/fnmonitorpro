@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "REPO=RONGLINC93/fnmonitor"
+set "REPO=RONGLINC93/fnmonitorpro"
 set "PREFIX=fnmonitorpro"
 
 rem ============ 发布.bat ============
@@ -12,7 +12,7 @@ rem 用法：发布.bat            （版本号自动读取 manifest 的 version
 rem       发布.bat 2.17.0      （指定版本号）
 rem 凭据：优先用 .env 中的 GITHUB_TOKEN（无需装 gh）；其次用 gh（需已登录）
 rem       两者都没有时只构建，并提示手动创建 Release
-rem 仓库: RONGLINC93/fnmonitor
+rem 仓库: RONGLINC93/fnmonitorpro
 rem 结束：窗口 5 秒后自动关闭
 
 rem ---- 1. 确定版本号 ----
@@ -25,7 +25,7 @@ if not defined VER (
   goto :theend
 )
 echo [信息] 发布版本：%VER%
-echo [信息] 目标仓库：RONGLINC93/fnmonitor
+echo [信息] 目标仓库：RONGLINC93/fnmonitorpro
 
 rem ---- 2. 检查 manifest 版本与参数是否一致 ----
 for /f "tokens=2 delims==" %%m in ('findstr /b "version=" manifest 2^>nul') do set "MFVER=%%m"

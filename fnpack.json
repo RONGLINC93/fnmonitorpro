@@ -3,7 +3,7 @@
  "source_info": {
   "name": "RONGLINC93 应用源",
   "author": "RONGLINC93",
-  "homepage": "https://github.com/RONGLINC93/fnmonitor",
+  "homepage": "https://github.com/RONGLINC93/fnmonitorpro",
   "description": "飞牛监控pro fnmonitor 发布源：fnOS 系统监控面板，实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU 与 Docker。自 2.17.0 起由 RONGLINC93 接手修改与维护（2.16.4 及更早版本由原作者 Misite齊 开发维护），基于其开源项目修改并致谢原作者。"
  },
  "apps": {
@@ -18,8 +18,8 @@
     "系统工具"
    ],
    "icon_url": "https://github.com/MisiteQ/fnmonitor/releases/download/2.16.4/ICON_256.PNG",
-   "readme_url": "https://raw.githubusercontent.com/RONGLINC93/fnmonitor/main/README.md",
-     "bug_report_url": "https://github.com/RONGLINC93/fnmonitor/issues",
+   "readme_url": "https://raw.githubusercontent.com/RONGLINC93/fnmonitorpro/main/README.md",
+     "bug_report_url": "https://github.com/RONGLINC93/fnmonitorpro/issues",
    "maintainer": "RONGLINC93",
      "maintainer_url": "https://github.com/RONGLINC93",
    "run_as": "root",
@@ -33,12 +33,12 @@
       "os_min_version": "0.9.0",
       "packages": {
        "x86": {
-        "download_url": "https://github.com/RONGLINC93/fnmonitor/releases/download/2.17.0/fnmonitorpro-2.17.0-x86.fpk",
+        "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/fnmonitorpro-2.17.0-x86.fpk",
         "sha256": "14a96c2b92d4634f44b7f013ff580a79e4298bd6efb42041091a0dcf45c3c8d8",
         "size": 441356
        },
        "arm": {
-        "download_url": "https://github.com/RONGLINC93/fnmonitor/releases/download/2.17.0/fnmonitorpro-2.17.0-arm.fpk",
+        "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/2.17.0/fnmonitorpro-2.17.0-arm.fpk",
         "sha256": "929bc35ea0fff02824a6094bd06711214e33db463c05107293b7ef6c7c85bd40",
         "size": 441356
        }

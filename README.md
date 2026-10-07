@@ -34,7 +34,7 @@ https://github.com/RONGLINC93/FnDepot
 
 ### 方式二：手动安装 FPK
 
-1. 到 [Releases](https://github.com/RONGLINC93/fnmonitor/releases) 按 NAS 架构下载：`fnmonitorpro-2.17.0-x86.fpk`（x86 机型）或 `fnmonitorpro-2.17.0-arm.fpk`（arm64 机型）
+1. 到 [Releases](https://github.com/RONGLINC93/fnmonitorpro/releases) 按 NAS 架构下载：`fnmonitorpro-2.17.0-x86.fpk`（x86 机型）或 `fnmonitorpro-2.17.0-arm.fpk`（arm64 机型）
 2. 飞牛 OS → **应用中心** → 左下角 **手动安装** → 选择 fpk 文件
 3. 安装后从桌面打开 **飞牛监控pro**，或直接访问 `http://<NAS_IP>:8778`
 
@@ -128,7 +128,7 @@ make_icon.py            应用图标生成（不覆盖已有图标）
 | v2.8.0 | 修复资源趋势历史数据不显示（打开即加载全部历史）；侧边栏支持收起 / 展开；界面美化 |
 | v2.7.1 | 修复小模块显示不全与平板竖屏适配 |
 
-完整日志见 [Releases](https://github.com/RONGLINC93/fnmonitor/releases)。
+完整日志见 [Releases](https://github.com/RONGLINC93/fnmonitorpro/releases)。
 
 ## 📄 许可证
 
