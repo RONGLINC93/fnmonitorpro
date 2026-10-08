@@ -9,16 +9,13 @@
 保持与 bump_version.py 一致的「已发布版 / 开发版」记录规则。
 
 用法：
-  lower_version.py               交互菜单（点击式 GUI：补丁-1 / 次版本-1 / 主版本-1 / 自定义）
+  lower_version.py               交互菜单（控制台方向键选择：↑/↓ 移动、回车确认，也可直接按数字键）
   lower_version.py patch         补丁号 -1   （2.17.2 -> 2.17.1；2.18.0 -> 2.17.0）
   lower_version.py minor         次版本 -1   （2.18.0 -> 2.17.0；3.0.0 -> 2.0.0）
   lower_version.py major         主版本 -1   （3.0.0 -> 2.0.0）
-  lower_version.py 2.16.5        直接指定更低的版本号（无 GUI 依赖，适合脚本/CI）
+  lower_version.py 2.16.5        直接指定更低的版本号（适合脚本/CI，无需交互）
   lower_version.py --keep-changelog  仅降低 version/version_released，不改动 changelog
   lower_version.py /?            显示用法
-
-注：无参数运行时，若环境支持 tkinter 会弹出点击式窗口选择降低模式；
-传入 patch/minor/major/版本号 等参数则直接进入对应逻辑（无需 GUI，便于自动化）。
 
 默认行为：降低版本后会同步裁剪 manifest 的 changelog——移除其中版本号高于新版本
 的条目（回退开发版时不应保留更高版本的更新日志），其余条目原样保留。
@@ -126,52 +123,6 @@ def confirm(prompt):
     except (EOFError, KeyboardInterrupt):
         return False
     return ans == "" or ans.lower() != "n"
-
-
-def choose_interactive(cur):
-    while True:
-        ma, mi, pa = parse_core(cur)
-        newp = dec_one(cur)                       # patch -1
-        newm = compute_lower("minor", cur)        # minor -1
-        newj = compute_lower("major", cur)        # major -1
-        print("")
-        print("请选择降低模式（当前版本 %s）：" % cur)
-        print("  [1] patch  补丁号 -1  -> %s" % newp)
-        print("  [2] minor  次版本 -1  -> %s" % (newm if newm else "（已是最低）"))
-        print("  [3] major  主版本 -1  -> %s" % (newj if newj else "（已是最低）"))
-        print("  [4] 自定义 手动输入更低的版本号")
-        try:
-            ch = input("请按 1 / 2 / 3 / 4 选择：").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n[取消] 未选择。")
-            return None
-        if ch == "1":
-            return newp
-        if ch == "2":
-            if newm is None:
-                print("[错误] 已是最低版本 0.0.0，无法再降。")
-                continue
-            return newm
-        if ch == "3":
-            if newj is None:
-                print("[错误] 已是最低版本 0.0.0，无法再降。")
-                continue
-            return newj
-        if ch == "4":
-            while True:
-                v = input("请输入更低的版本号（如 2.16.5）：").strip()
-                if not v:
-                    print("[取消] 未输入版本号。")
-                    return None
-                if not is_valid_version(v):
-                    print("[错误] 版本号格式不正确：%s（示例 2.16.5）" % v)
-                    continue
-                if parse_version_tuple(v) >= parse_version_tuple(cur):
-                    print("[错误] 该版本（%s）不低于当前版本（%s），请用 bump_version.py 递增。" % (v, cur))
-                    continue
-                return v
-        print("[取消] 未选择。")
-        return None
 
 
 def parse_version_tuple(ver):
