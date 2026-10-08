@@ -42,10 +42,6 @@
     <div class="brand"><div class="logo">FN</div><div><h1>飞牛监控pro</h1></div></div>
     <div class="sub" id="subtitle">请登录以继续使用</div>
 
-    <div id="fnosBox">
-      <button class="btn btn-primary" id="fnosBtn">使用飞牛账号授权</button>
-    </div>
-
     <div class="row" id="pwBox">
       <input type="password" id="pwInput" placeholder="应用访问口令" autocomplete="off">
       <button class="btn btn-primary" id="pwBtn" style="margin-top:10px;">使用口令登录</button>
@@ -76,45 +72,17 @@ async function go(){
   try { const r = await fetch('/api/auth/config', { cache:"no-store" }); cfg = await r.json(); } catch(e){}
   if (!cfg.auth_enabled){ location.href = '/'; return; }
   if (cfg.setup_mode){
-    // 首次使用（未配置任何授权方式）：优先飞牛账号授权；同时提供设置本地口令入口
-    $("fnosBox").style.display = "block";
+    // 首次使用（未设置访问口令）：引导设置本地访问口令
     $("setupBox").style.display = "block";
-    $("subtitle").textContent = "请使用飞牛账号授权登录";
-    $("hint").textContent = "优先点「使用飞牛账号授权」（需在飞牛桌面/网关内打开，由网关注入身份）；若无法获取账号，可在下方先设置本地访问口令后凭口令登录。登录后在「设置 → 登录与授权」可配置身份头 / 可信来源 IP / 访问口令（等同于 config.json 的 auth_fnos_header / auth_fnos_proxy / auth_password）。";
+    $("subtitle").textContent = "请设置访问口令";
+    $("hint").textContent = "首次使用请设置一个访问口令，之后凭口令登录（可在「设置 → 登录与授权」修改或关闭登录）。";
   } else {
-    // 已配置过授权方式：未设置口令则提供「设置口令」入口，已设置则提供「口令登录」
+    // 已配置过访问口令：提供口令登录入口
     if (!cfg.requires_password){ $("setupBox").style.display = "block"; }
     else { $("pwBox").style.display = "block"; }
-    if (cfg.fnos_sso || cfg.fnos_detected || window.self !== window.top){
-      $("fnosBox").style.display = "block";
-      $("hint").textContent = "已检测到飞牛网关身份，点「使用飞牛账号授权」即可一键登录；也可用下方访问口令登录。";
-    } else {
-      $("hint").textContent = "未检测到飞牛桌面/网关环境：飞牛账号授权需经飞牛桌面或网关打开本应用才会下发身份；当前可直接使用下方「应用访问口令」登录（首次进入请先设置口令）。";
-    }
+    $("hint").textContent = "请输入应用访问口令登录。";
   }
 }
-
-$("fnosBtn").onclick = async () => {
-  const btn = $("fnosBtn");
-  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>正在授权…';
-  // 优先使用 URL 参数下发的账号（部分环境经查询参数传递）；
-  // 其余由服务端从飞牛网关注入的请求头（X-Trim-Username）自动识别当前登录用户。
-  let user = "";
-  try {
-    const q = new URLSearchParams(location.search);
-    user = (q.get('fnos_user') || "").trim();
-  } catch(e){}
-  let d = {};
-  try {
-    const r = await fetch('/api/auth/fnos', {
-      method:'POST', headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ user: user })
-    });
-    d = await r.json();
-  } catch(e){}
-  if (d.ok){ location.href = '/'; }
-  else { msg(d.error || "授权失败"); btn.disabled = false; btn.textContent = "使用飞牛账号授权"; }
-};
 
 $("pwBtn").onclick = async () => {
   const r = await fetch('/api/auth/password', {
