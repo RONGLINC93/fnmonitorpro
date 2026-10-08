@@ -59,7 +59,11 @@ UPDATE_REPO = "RONGLINC93/fnmonitorpro"         # GitHub 仓库：在线检查�
 UPDATE_CHECK_INTERVAL = 6 * 3600           # 自动更新检查周期（6 小时）
 # 下载加速：直连 GitHub 下载域在国内常不可达，失败后自动依次尝试公共加速镜像
 GH_MIRRORS = ["", "https://gh-proxy.com/", "https://ghfast.top/", "https://ghproxy.net/", "https://gh.llkk.cc/"]
-DEFAULT_CONFIG = {"interval": 10, "retention_days": 7, "port": 0, "history_interval": 60, "weather_city": "", "data_dir": "", "update_autocheck": 1, "update_autodownload": 0, "update_autoupdate": 0, "traffic_exclude_bridge": 0, "power_tdp_w": 65, "power_rate_yuan": 0.6, "power_disk_typical_w": 8, "power_nic_fixed_w": 5, "power_base_w": 8, "disk_standby_protect": 1, "open_mode": "url"}
+DEFAULT_CONFIG = {"interval": 10, "retention_days": 7, "port": 0, "history_interval": 60, "weather_city": "", "data_dir": "", "update_autocheck": 1, "update_autodownload": 0, "update_autoupdate": 0, "traffic_exclude_bridge": 0, "power_tdp_w": 65, "power_rate_yuan": 0.6, "power_disk_typical_w": 8, "power_nic_fixed_w": 5, "power_base_w": 8, "disk_standby_protect": 1, "open_mode": "url",
+ # 登录鉴权（飞牛账号授权）：auth_enabled=是否启用登录；auth_session_days=会话有效期(天)；
+ # auth_fnos_header=飞牛网关注入当前用户名的 Header 名（配置后信任该 Header 自动建会话，实现网关级授权）；
+ # auth_password=应用级兜底访问口令（为空则禁用，飞牛授权不可用时作为逃生通道）
+ "auth_enabled": 1, "auth_session_days": 7, "auth_fnos_header": "", "auth_password": ""}
 # 虚拟网卡前缀（Docker 网桥 / 容器 / VPN 等）：流量与功耗估算统一口径
 VIRT_IFACE_PREFIXES = ("docker", "veth", "br-", "virbr", "tun", "tap", "vnet", "lxc", "kube", "wg")
 
@@ -4610,6 +4614,128 @@ class MonitorApp:
         self._power_stats_ts = 0.0
         self._disk_standby_cache = None
         self._disk_standby_ts = 0.0
+        # ---- 登录鉴权：会话（Cookie）持久化 ----
+        self._session_file = os.path.join(data_dir, "sessions.json")
+        self._sessions = {}
+        self._load_sessions()
+
+    # ---- 登录鉴权（飞牛账号授权 + Cookie 会话）----
+    def _load_sessions(self):
+        """从 sessions.json 加载会话并剔除过期项。"""
+        try:
+            with open(self._session_file, "r", errors="ignore") as f:
+                data = json.load(f)
+            now = time.time()
+            self._sessions = {k: v for k, v in data.items()
+                              if float(v.get("expires", 0)) > now}
+        except Exception:
+            self._sessions = {}
+
+    def _save_sessions(self):
+        try:
+            tmp = self._session_file + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(self._sessions, f)
+            os.replace(tmp, self._session_file)
+        except Exception:
+            pass
+
+    def _create_session(self, user, via):
+        """创建会话，返回 (sid, max_age_seconds)。"""
+        sid = hashlib.sha256(os.urandom(24)).hexdigest()
+        days = max(0.1, float(self.config.get("auth_session_days") or 7))
+        exp = time.time() + days * 86400
+        self._sessions[sid] = {"user": user, "via": via,
+                               "created": time.time(), "expires": exp}
+        self._save_sessions()
+        return sid, int(days * 86400)
+
+    def _get_session(self, sid):
+        s = self._sessions.get(sid)
+        if not s:
+            return None
+        if float(s.get("expires", 0)) <= time.time():
+            self._sessions.pop(sid, None)
+            self._save_sessions()
+            return None
+        return s
+
+    def _delete_session(self, sid):
+        if self._sessions.pop(sid, None) is not None:
+            self._save_sessions()
+
+    def _set_config_value(self, key, value):
+        """把单个配置项写入 config.json 并同步到内存。"""
+        path = os.path.join(self._cfg_dir, "config.json")
+        try:
+            with open(path, "r", errors="ignore") as f:
+                cur = json.load(f)
+        except Exception:
+            cur = {}
+        cur[key] = value
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(cur, f, ensure_ascii=False, indent=1)
+        except Exception:
+            pass
+        self.config[key] = value
+
+    def api_auth_session(self, sess):
+        if not bool(int(self.config.get("auth_enabled", 1) or 0)):
+            return {"authenticated": True, "user": None, "auth_disabled": True}
+        if sess:
+            return {"authenticated": True, "user": sess.get("user"),
+                    "via": sess.get("via")}
+        return {"authenticated": False}
+
+    def api_auth_config(self):
+        auth_on = bool(int(self.config.get("auth_enabled", 1) or 0))
+        header = str(self.config.get("auth_fnos_header") or "").strip()
+        pw = str(self.config.get("auth_password") or "").strip()
+        # 已启用鉴权、但未配置任何授权方式 → 首次初始化（设置本地口令）
+        setup = auth_on and not header and not pw
+        return {"auth_enabled": auth_on, "fnos_sso": bool(header),
+                "requires_password": bool(pw), "setup_mode": setup}
+
+    def api_auth_fnos(self, data):
+        """飞牛账号授权：信任飞牛桌面（postMessage）或网关下发的当前登录用户。"""
+        if not bool(int(self.config.get("auth_enabled", 1) or 0)):
+            return {"ok": True, "user": "(未启用鉴权)"}, None, 0
+        user = str((data or {}).get("user") or "").strip()
+        token = str((data or {}).get("token") or "").strip()
+        if not user:
+            return {"ok": False, "error": "缺少飞牛账号信息"}, None, 0
+        sid, ma = self._create_session(user, "fnos")
+        return {"ok": True, "user": user}, sid, ma
+
+    def api_auth_password(self, data):
+        pw = str(self.config.get("auth_password") or "").strip()
+        if not pw:
+            return {"ok": False, "error": "未配置应用口令"}, None, 0
+        inp = str((data or {}).get("password") or "")
+        if inp != pw:
+            return {"ok": False, "error": "口令错误"}, None, 0
+        sid, ma = self._create_session("(应用口令)", "password")
+        return {"ok": True}, sid, ma
+
+    def api_auth_setup(self, data):
+        """首次初始化：未配置任何授权方式时，设置本地访问口令。"""
+        auth_on = bool(int(self.config.get("auth_enabled", 1) or 0))
+        header = str(self.config.get("auth_fnos_header") or "").strip()
+        pw = str(self.config.get("auth_password") or "").strip()
+        if not auth_on or header or pw:
+            return {"ok": False, "error": "已配置授权方式，无需初始化"}, None, 0
+        newpw = str((data or {}).get("password") or "")
+        if len(newpw) < 4:
+            return {"ok": False, "error": "口令至少 4 位"}, None, 0
+        self._set_config_value("auth_password", newpw)
+        sid, ma = self._create_session("(初始化口令)", "password")
+        return {"ok": True}, sid, ma
+
+    def api_auth_logout(self, data, sid):
+        if sid:
+            self._delete_session(sid)
+        return {"ok": True}, None, 0
 
     def make_handler(self):
         app = self
@@ -4637,10 +4763,31 @@ class MonitorApp:
                 parsed = urlparse(self.path)
                 path = parsed.path
                 qs = parse_qs(parsed.query)
+                self._pending_cookies = []
 
-                if path in ("/", "/index.html"):
-                    self._serve_file(os.path.join(app.www_dir, "index.html"), "text/html; charset=utf-8")
+                # ---- 登录 / 飞牛账号授权：公开路由（无需会话）----
+                if path == "/login.html":
+                    self._serve_login()
                     return
+                if path.startswith("/api/auth/"):
+                    self._handle_auth(path, qs)
+                    return
+
+                # ---- 会话校验 ----
+                authed, _sess = self._check_auth()
+                if path in ("/", "/index.html"):
+                    if authed:
+                        self._serve_file(os.path.join(app.www_dir, "index.html"),
+                                        "text/html; charset=utf-8")
+                    else:
+                        self.send_response(302)
+                        self.send_header("Location", "/login.html")
+                        self.end_headers()
+                    return
+                if path.startswith("/api/") and not authed:
+                    self._send_status_json(401, {"authenticated": False, "need_login": True})
+                    return
+                # ---- 以下为已鉴权业务路由 ----
                 if path == "/favicon.ico":
                     self.send_response(204)
                     self.end_headers()
@@ -4799,6 +4946,7 @@ class MonitorApp:
             def _handle_post(self):
                 parsed = urlparse(self.path)
                 path = parsed.path
+                self._pending_cookies = []
 
                 def _read_json():
                     try:
@@ -4807,6 +4955,16 @@ class MonitorApp:
                         return json.loads(body.decode("utf-8", "ignore") or "{}")
                     except Exception:
                         return {}
+
+                # ---- 登录 / 飞牛账号授权：公开路由 ----
+                if path.startswith("/api/auth/"):
+                    self._handle_auth_post(path)
+                    return
+                # ---- 会话校验：未登录拒绝业务写操作 ----
+                authed, _sess = self._check_auth()
+                if not authed:
+                    self._send_status_json(401, {"authenticated": False, "need_login": True})
+                    return
 
                 if path == "/api/docker/action":
                     data = _read_json()
@@ -4831,11 +4989,26 @@ class MonitorApp:
             def _json(self, obj):
                 self._send_bytes(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
 
+            def _send_status_json(self, code, obj):
+                body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self._emit_cookies()
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _emit_cookies(self):
+                for c in getattr(self, "_pending_cookies", []):
+                    self.send_header("Set-Cookie", c)
+
             def _send_bytes(self, body):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
+                self._emit_cookies()
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -4845,6 +5018,7 @@ class MonitorApp:
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
                 self.send_header("Cache-Control", "no-store")
+                self._emit_cookies()
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -4859,8 +5033,94 @@ class MonitorApp:
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(body)))
                 self.send_header("Cache-Control", "no-store")
+                self._emit_cookies()
                 self.end_headers()
                 self.wfile.write(body)
+
+            # ---- 登录鉴权辅助 ----
+            def _read_sid(self):
+                c = self.headers.get("Cookie") or ""
+                for part in c.split(";"):
+                    part = part.strip()
+                    if part.startswith("fnmp_sid="):
+                        return part[len("fnmp_sid="):].strip()
+                return ""
+
+            def _set_sid_cookie(self, sid, max_age):
+                self._pending_cookies.append(
+                    "fnmp_sid=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax"
+                    % (sid, max_age))
+
+            def _clear_sid_cookie(self):
+                self._pending_cookies.append(
+                    "fnmp_sid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+
+            def _check_auth(self):
+                """返回 (是否已登录, 会话)。未启用鉴权时直接放行；配置了飞牛网关注入
+                Header 时信任该 Header 自动建立会话（网关级「飞牛账号授权」）。"""
+                if not bool(int(app.config.get("auth_enabled", 1) or 0)):
+                    return True, None
+                sid = self._read_sid()
+                sess = app._get_session(sid) if sid else None
+                if not sess:
+                    hdr = str(app.config.get("auth_fnos_header") or "").strip()
+                    if hdr:
+                        u = (self.headers.get(hdr) or "").strip()
+                        if u:
+                            nsid, ma = app._create_session(u, "fnos-gateway")
+                            self._set_sid_cookie(nsid, ma)
+                            sess = app._get_session(nsid)
+                return bool(sess), sess
+
+            def _read_json_body(self):
+                try:
+                    length = int(self.headers.get("Content-Length") or 0)
+                    body = self.rfile.read(length) if length else b""
+                    return json.loads(body.decode("utf-8", "ignore") or "{}")
+                except Exception:
+                    return {}
+
+            def _serve_login(self):
+                self._serve_file(os.path.join(app.www_dir, "login.html"),
+                                "text/html; charset=utf-8")
+
+            def _handle_auth(self, path, qs):
+                if path == "/api/auth/session":
+                    authed, sess = self._check_auth()
+                    self._json(app.api_auth_session(sess if authed else None))
+                    return
+                if path == "/api/auth/config":
+                    self._json(app.api_auth_config())
+                    return
+                self.send_error(404, "Not Found")
+
+            def _handle_auth_post(self, path):
+                data = self._read_json_body()
+                if path == "/api/auth/fnos":
+                    res, sid, ma = app.api_auth_fnos(data)
+                    if sid:
+                        self._set_sid_cookie(sid, ma)
+                    self._json(res)
+                    return
+                if path == "/api/auth/password":
+                    res, sid, ma = app.api_auth_password(data)
+                    if sid:
+                        self._set_sid_cookie(sid, ma)
+                    self._json(res)
+                    return
+                if path == "/api/auth/setup":
+                    res, sid, ma = app.api_auth_setup(data)
+                    if sid:
+                        self._set_sid_cookie(sid, ma)
+                    self._json(res)
+                    return
+                if path == "/api/auth/logout":
+                    sid = self._read_sid()
+                    res, _, _ = app.api_auth_logout(data, sid)
+                    self._clear_sid_cookie()
+                    self._json(res)
+                    return
+                self.send_error(404, "Not Found")
 
             def log_message(self, fmt, *args):
                 pass  # 静默访问日志
@@ -5251,6 +5511,18 @@ class MonitorApp:
             m = str(data["open_mode"]).lower()
             if m in ("iframe", "url"):
                 cur["open_mode"] = m
+        # 登录鉴权配置（仅当设置页提交时才写入；缺失字段保持原值）
+        if "auth_enabled" in data:
+            cur["auth_enabled"] = 1 if str(data["auth_enabled"]) in ("1", "true", "on") else 0
+        if "auth_session_days" in data:
+            try:
+                cur["auth_session_days"] = max(1, min(365, int(data["auth_session_days"])))
+            except Exception:
+                pass
+        if "auth_fnos_header" in data:
+            cur["auth_fnos_header"] = str(data["auth_fnos_header"]).strip()
+        if "auth_password" in data:
+            cur["auth_password"] = str(data["auth_password"])
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(cur, f, ensure_ascii=False, indent=1)
@@ -5278,6 +5550,18 @@ class MonitorApp:
                         pass
             if "data_dir" in cur:
                 self.config["data_dir"] = str(cur["data_dir"]).strip()
+            # 鉴权配置同步到内存（设置页提交时即时生效）
+            if "auth_enabled" in cur:
+                self.config["auth_enabled"] = 1 if str(cur["auth_enabled"]) in ("1", "true", "on") else 0
+            if "auth_session_days" in cur:
+                try:
+                    self.config["auth_session_days"] = max(1, int(cur["auth_session_days"]))
+                except Exception:
+                    pass
+            if "auth_fnos_header" in cur:
+                self.config["auth_fnos_header"] = str(cur["auth_fnos_header"])
+            if "auth_password" in cur:
+                self.config["auth_password"] = str(cur["auth_password"])
             open_mode_changed = False
             new_mode = str(cur.get("open_mode", "")).lower()
             if new_mode in ("iframe", "url"):
@@ -6251,6 +6535,18 @@ def load_config(data_dir):
         # 飞牛桌面打开方式（iframe=飞牛窗口内打开 / url=浏览器新标签页）
         if str(user.get("open_mode", "")).lower() in ("iframe", "url"):
             cfg["open_mode"] = str(user["open_mode"]).lower()
+        # 登录鉴权配置（飞牛账号授权 / 应用口令）
+        if str(user.get("auth_enabled", "")) in ("0", "1", "true", "false", "on", "off"):
+            cfg["auth_enabled"] = 1 if str(user["auth_enabled"]) in ("1", "true", "on") else 0
+        if "auth_session_days" in user:
+            try:
+                cfg["auth_session_days"] = max(1, min(365, int(user["auth_session_days"])))
+            except Exception:
+                pass
+        if "auth_fnos_header" in user:
+            cfg["auth_fnos_header"] = str(user["auth_fnos_header"]).strip()
+        if "auth_password" in user:
+            cfg["auth_password"] = str(user["auth_password"])
     except Exception:
         pass
     return cfg

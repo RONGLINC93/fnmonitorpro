@@ -1082,7 +1082,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 
 </main>
 
-<footer class="footer">飞牛监控pro <span id="foot-ver">v…</span> · 纯本地运行 · 历史数据保存在本机 localdata（每 60 秒一条，打开即加载历史趋势，可选 10 分钟 ~ 全部范围）</footer>
+<footer class="footer">飞牛监控pro <span id="foot-ver">v…</span> · 纯本地运行 · 历史数据保存在本机 localdata（每 60 秒一条，打开即加载历史趋势，可选 10 分钟 ~ 全部范围）<span id="auth-bar" style="display:none;margin-left:10px">· <span id="auth-user" style="opacity:.8"></span> <a href="#" onclick="return doLogout()" style="color:var(--accent);text-decoration:none">退出登录</a></span></footer>
 
 </div><!-- /content -->
 </div><!-- /layout -->
@@ -1104,8 +1104,33 @@ const state = { range: "10m", overview: null, docker: null, processes: null, tab
 
 async function getJSON(url){
   const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error("HTTP " + r.status);
+  if (!r.ok) {
+    if (r.status === 401) {
+      try { const d = await r.json(); if (d && d.need_login) { window.location.replace('/login.html'); return; } } catch(e){}
+    }
+    throw new Error("HTTP " + r.status);
+  }
   return r.json();
+}
+
+/* ---------- 登录鉴权：页脚退出登录 / 展示当前用户 ---------- */
+async function updateAuthBar(){
+  try {
+    const d = await (await fetch('/api/auth/session', { cache: "no-store" })).json();
+    const bar = $("auth-bar");
+    if (!bar) return;
+    if (d.authenticated && d.user){
+      bar.style.display = "inline";
+      const u = $("auth-user"); if (u) u.textContent = "（" + d.user + "）";
+    } else {
+      bar.style.display = "none";
+    }
+  } catch(e){}
+}
+function doLogout(){
+  fetch('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    .catch(()=>{}).finally(() => { window.location.replace('/login.html'); });
+  return false;
 }
 
 /* ---------- 格式化 ---------- */
@@ -3484,6 +3509,12 @@ function autoHideEmptyPanels(){
 }
 
 (async function init(){
+  // 登录鉴权：未登录则跳转登录页（会话过期 / 独立打开时兜底）
+  try {
+    const ar = await fetch('/api/auth/session', { cache: "no-store" });
+    const ad = await ar.json();
+    if (!ad.authenticated) { window.location.replace('/login.html'); return; }
+  } catch (e) { /* 接口异常时不阻断（兼容未启用鉴权的旧部署） */ }
   (function(){
     // 布局版本检查：v2.4.0 新增温度墙/功耗显卡等面板，旧版保存的布局不含新面板，
     // 直接沿用会把这些面板挤到末尾导致布局错乱，升级后自动重置为新默认布局（仅一次）
@@ -3519,6 +3550,7 @@ function autoHideEmptyPanels(){
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden){ pollOverview(); pollWall(); pollDocker(); loadHistory(); pollTraffic(); pollPowerStats(); }
   });
+  updateAuthBar();  // 页脚展示当前飞牛账号并启用「退出登录」
 })();
 
 /* ---------- 全屏切换（F11 拦截 + 顶栏按钮） ----------
