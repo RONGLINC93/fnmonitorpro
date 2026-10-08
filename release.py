@@ -52,6 +52,35 @@ def run(cmd):
     return subprocess.run(cmd).returncode
 
 
+def bump_manifest_version(ver):
+    """发布成功后自动递增：
+    version_released 设为刚发布的 ver，version 补丁号 +1（进入下一开发版）。
+    仅替换相应两行，其余 UTF-8 无 BOM 内容原样保留。
+    """
+    with io.open(MANIFEST, encoding="utf-8", newline="") as f:
+        text = f.read()
+    m = re.match(r"^([0-9]+)\.([0-9]+)\.([0-9]+)", ver)
+    if not m:
+        print("[警告] 无法解析版本号 %s，跳过自动递增" % ver)
+        return False
+    ma, mi, pa = m.groups()
+    nxt = "%s.%s.%d" % (ma, mi, int(pa) + 1)
+    text2 = re.sub(r"(?m)^version=[0-9].*$", "version=%s" % nxt, text, count=1)
+    if re.search(r"(?m)^version_released=.*$", text2):
+        text2 = re.sub(r"(?m)^version_released=.*$", "version_released=%s" % ver, text2, count=1)
+    else:
+        text2 += ("\n" if not text2.endswith("\n") else "") + "version_released=%s\n" % ver
+    with io.open(MANIFEST, "w", encoding="utf-8", newline="") as f:
+        f.write(text2)
+    with io.open(MANIFEST, encoding="utf-8", newline="") as f:
+        back = get_version(f.read())
+    if back == nxt:
+        print("[完成] manifest 已自动递增：%s -> %s（下一开发版），version_released=%s" % (ver, nxt, ver))
+        return True
+    print("[警告] 递增后读回版本为 %s，预期 %s，请手动检查 manifest" % (back, nxt))
+    return False
+
+
 def main():
     os.chdir(ROOT)
     ver = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -146,6 +175,7 @@ def main():
     print("============== 发布结果 ==============")
     if rel_rc == 0:
         print("[成功] v%s 发布完成：标签 + Release + 安装包均已就绪" % ver)
+        bump_manifest_version(ver)
     else:
         print("[未完成] 仅完成本地构建")
         print("        标签 v%s 已推送" % ver if rc == 0 else "        标签未推送成功")
