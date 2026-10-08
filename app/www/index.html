@@ -203,6 +203,10 @@ button{font-family:inherit}
   padding:5px 11px;border:1px solid color-mix(in srgb,var(--accent) 42%,var(--border));
   border-radius:9px;font-size:13px;white-space:nowrap;transition:.15s}
 #auth-bar a#auth-logout:hover{background:var(--accent-soft);border-color:var(--accent)}
+/* 版本标记：DEV 开发版 / 已发布对照 */
+.tag-dev{display:inline-block;font-size:11px;font-weight:700;line-height:1;padding:3px 7px;border-radius:6px;
+  color:var(--accent);background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 40%,var(--border));vertical-align:middle}
+.ver-dev{font-size:13px;opacity:.85}
 
 /* 内容区 */
 main{flex:1;width:100%;padding:20px 22px;display:grid;grid-template-columns:1fr;gap:18px;align-items:start}
@@ -1099,7 +1103,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
       </div>
       <div class="set-row" data-mod="m-set-about">
         <div class="s-label"><b>关于 飞牛监控pro（fnMonitor）</b><div class="s-sub">
-          <b>v<span id="about-ver">--</span></b> · 为飞牛 fnOS 打造的系统监控面板 · 纯本地运行 · 开源免费<br>
+          <b>v<span id="about-ver">--</span></b> <span id="about-dev" class="ver-dev" style="display:none"></span> · 为飞牛 fnOS 打造的系统监控面板 · 纯本地运行 · 开源免费<br>
           实时监控 CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU，Docker 容器与端口占用，内置应用统计与历史趋势；所有数据（历史记录 / 界面设置 / 配置）均保存在 <b>NAS 服务器端</b>的程序数据目录中，与访问所用的电脑无关。<br>
           作者：<a href="https://github.com/RONGLINC93" target="_blank" rel="noopener">RONGLINC93</a> · 项目：<a href="https://github.com/RONGLINC93/fnmonitorpro" target="_blank" rel="noopener">github.com/RONGLINC93/fnmonitorpro</a> · 问题反馈：<a href="https://github.com/RONGLINC93/fnmonitorpro/issues" target="_blank" rel="noopener">Issues</a><br>
           <span style="color:var(--dim)">自 v2.17.0 起由 RONGLINC93 接手修改与维护（v2.16.4 及更早版本由原作者 Misite齊（@MisiteQ）开发维护），本版本基于其开源项目修改而来，谨致谢原作者的开源贡献。</span><br>
@@ -1114,7 +1118,7 @@ body{display:flex;flex-direction:column;min-height:100vh}
 
 </main>
 
-<footer class="footer">飞牛监控pro <span id="foot-ver">v…</span> · 纯本地运行 · 历史数据保存在本机 localdata（每 60 秒一条，打开即加载历史趋势，可选 10 分钟 ~ 全部范围）</footer>
+<footer class="footer">飞牛监控pro <span id="foot-ver">v…</span><span id="foot-dev" style="display:none;margin-left:8px"></span> · 纯本地运行 · 历史数据保存在本机 localdata（每 60 秒一条，打开即加载历史趋势，可选 10 分钟 ~ 全部范围）</footer>
 
 </div><!-- /content -->
 </div><!-- /layout -->
@@ -2570,6 +2574,11 @@ function renderUpdateStatus(cfg){
   const st = cfg.update_status || {};
   if (cfg.version) { setText("upd-cur", "v" + cfg.version); setText("about-ver", cfg.version);
     setText("side-ver", "v" + cfg.version); setText("foot-ver", "v" + cfg.version); }
+  // 开发版标记：version 与已发布版本不同 => 当前为开发版，标注已发布版本号
+  const relHtml = (cfg.released_version && cfg.released_version !== cfg.version)
+    ? '<span class="tag-dev">DEV 开发版</span> 已发布 v' + cfg.released_version : "";
+  const ad = $("about-dev"); if (ad){ ad.style.display = relHtml ? "" : "none"; if (relHtml) ad.innerHTML = relHtml; }
+  const fd = $("foot-dev"); if (fd){ fd.style.display = relHtml ? "" : "none"; if (relHtml) fd.innerHTML = relHtml; }
   if (cfg.arch) setText("upd-arch", cfg.arch);
   const auto = $("set-upd-auto");
   if (auto) auto.checked = !!cfg.update_autoupdate;

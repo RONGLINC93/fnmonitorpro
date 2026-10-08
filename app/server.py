@@ -54,7 +54,28 @@ def _read_manifest_version():
             pass
     return ""
 
+def _read_manifest_value(key, default=""):
+    """从 manifest 读取任意 key（与 _read_manifest_version 同样路径）。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for base in (os.environ.get("TRIM_APPDEST", ""), os.path.dirname(here),
+                 "/var/apps/fnmonitorpro"):
+        if not base:
+            continue
+        try:
+            with open(os.path.join(base, "manifest"), "r", encoding="utf-8",
+                      errors="ignore") as f:
+                for line in f:
+                    m = re.match(r'\s*' + re.escape(key) + r'\s*=\s*"?([^"\r\n]+?)"?\s*$', line)
+                    if m:
+                        return m.group(1)
+        except Exception:
+            pass
+    return default
+
 VERSION = _read_manifest_version() or "2.17.1"   # manifest 不可读时回退（须与 manifest 同步）
+# 已发布到 GitHub Releases 的版本号（manifest 的 version_released 字段）；
+# 留空 / 缺失 = 未单独记录，UI 不显示「已发布」对照。当前 version 与之不同即视为开发版。
+RELEASED_VERSION = _read_manifest_value("version_released")
 UPDATE_REPO = "RONGLINC93/fnmonitorpro"         # GitHub 仓库：在线检查更新 / 下载安装包
 UPDATE_CHECK_INTERVAL = 6 * 3600           # 自动更新检查周期（6 小时）
 # 下载加速：直连 GitHub 下载域在国内常不可达，失败后自动依次尝试公共加速镜像
@@ -5305,6 +5326,7 @@ class MonitorApp:
     def api_system(self):
         info = system_info()
         info["version"] = VERSION
+        info["released_version"] = RELEASED_VERSION
         info["db_size"] = self.collector.db.metrics_size()
         info["data_dir"] = self.data_dir
         return info
@@ -5317,6 +5339,7 @@ class MonitorApp:
         c["data_dir_actual"] = self.data_dir
         c["ui_file"] = os.path.join(self.data_dir, "ui.json")  # 界面同步设置文件实际位置
         c["version"] = VERSION
+        c["released_version"] = RELEASED_VERSION
         c["arch"] = self.updater.detect_arch()
         c["update_status"] = self.updater.status()
         return {"config": c}
