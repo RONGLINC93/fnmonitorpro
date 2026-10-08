@@ -19,6 +19,12 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(ROOT, "manifest")
 REPO = "RONGLINC93/fnmonitorpro"
 
+# 复用 changelog.py 的 README 解析（缺失时降级为手动输入）
+try:
+    from changelog import readme_changelog_for
+except Exception:
+    readme_changelog_for = None
+
 
 def load_env(path):
     data = {}
@@ -50,6 +56,60 @@ def git_auth_args():
 def run(cmd):
     print("> " + " ".join(cmd))
     return subprocess.run(cmd).returncode
+
+
+def ensure_changelog(ver):
+    """发布前检查：manifest 的 changelog 必须包含当前版本 ver 的条目；
+    若缺失则交互提示用户输入，并插入到 changelog 最前面（ver<br>内容<br>旧内容）。
+    直接回车则跳过（仅告警，不阻断发布）。
+    """
+    with io.open(MANIFEST, encoding="utf-8", newline="") as f:
+        text = f.read()
+    m = re.search(r"(?m)^changelog=(.*)$", text)
+    if not m:
+        print("[提示] manifest 无 changelog 字段，跳过检查（请确认格式）")
+        return True
+    cur = m.group(1).strip()
+    if cur.startswith("v%s" % ver) or cur.startswith("v%s<br>" % ver):
+        print("[信息] manifest 已包含 v%s 的更新日志，跳过" % ver)
+        return True
+
+    print("")
+    print("=== 发布前：为 v%s 填写更新日志 ===" % ver)
+    print("manifest 的 changelog 顶部仍是旧版本（%s），缺少 v%s 条目。"
+          % (cur[:40] + ("..." if len(cur) > 40 else ""), ver))
+
+    # 1) 优先从 README 版本历史自动获取
+    content = None
+    if readme_changelog_for is not None:
+        rcontent = readme_changelog_for(ver)
+        if rcontent:
+            content = rcontent
+            print("[信息] 已从 README.md「版本历史」自动获取 v%s 更新日志。" % ver)
+
+    # 2) README 取不到则交互提示手动输入
+    if not content:
+        try:
+            line = input("请输入 v%s 的更新内容（一行，可用 <br> 换行、① 等符号；直接回车跳过）：" % ver).strip()
+        except (EOFError, KeyboardInterrupt):
+            line = ""
+        if not line:
+            print("[警告] 未输入 v%s 更新日志，请发布前务必手动补充 manifest changelog！" % ver)
+            return True
+        content = line
+
+    # manifest 的 changelog 只保留当前版本一条（完整历史见 README 版本历史表）
+    new_entry = "v%s<br>%s" % (ver, content)
+    text2 = re.sub(r"(?m)^changelog=.*$", "changelog=%s" % new_entry, text, count=1)
+    with io.open(MANIFEST, "w", encoding="utf-8", newline="") as f:
+        f.write(text2)
+    with io.open(MANIFEST, encoding="utf-8", newline="") as f:
+        back = re.search(r"(?m)^changelog=(.*)$", f.read())
+    if back and back.group(1).startswith(new_entry):
+        print("[完成] 已将 v%s 更新日志写入 manifest 顶部" % ver)
+    else:
+        print("[警告] 写回校验失败，请手动检查 manifest changelog")
+    return True
 
 
 def bump_manifest_version(ver):
@@ -104,6 +164,9 @@ def main():
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if r.stdout.strip():
         print("[提示] 存在未提交改动，建议先运行「push.py」再发布")
+
+    # 发布前：确保 manifest 的 changelog 已包含当前版本条目
+    ensure_changelog(ver)
 
     # ---- 1/3 构建安装包 ----
     print("")

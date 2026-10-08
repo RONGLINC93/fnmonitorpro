@@ -162,7 +162,7 @@ def main():
     if back == new:
         print("[完成] manifest 版本号已更新：%s -> %s（开发版）" % (cur, new))
         print("[完成] version_released 已设为 %s（已发布版记录；UI 将显示「DEV 开发版 · 已发布 v%s」）" % (cur, cur))
-        print("[提示] 记得补充 manifest 的 changelog（顶部加一行：v%s ...），然后运行「release.py」打包发布。" % new)
+        print("[提示] 先在 README.md 的「版本历史」表加一行 v%s，再运行「changelog.py」/「release.py」把该版本更新日志同步进 manifest（manifest 的 changelog 只保留当前版本一条）。" % new)
         return 0
     print("[警告] 写入后读回的版本是 %s，与预期 %s 不一致，请手动检查 manifest。" % (back, new))
     return 1
