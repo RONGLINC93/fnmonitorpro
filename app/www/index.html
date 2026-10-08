@@ -926,6 +926,42 @@ body{display:flex;flex-direction:column;min-height:100vh}
         <button class="mod-hide" data-mod="m-set-openmode" title="隐藏此模块">✕</button>
       </div>
 
+      <div class="set-group">登录与授权</div>
+      <div class="set-row" data-mod="m-set-authenable">
+        <div class="s-label"><b>启用登录鉴权</b><div class="s-sub">关闭后任何人访问本应用端口都无需登录（仅在已由网关 / 防火墙保护时建议关闭）</div></div>
+        <select id="set-auth-enabled" class="inp" style="max-width:120px">
+          <option value="1">启用</option>
+          <option value="0">关闭</option>
+        </select>
+        <button class="op-btn" onclick="saveAuthConfig()">保存</button>
+        <button class="mod-hide" data-mod="m-set-authenable" title="隐藏此模块">✕</button>
+      </div>
+      <div class="set-row" data-mod="m-set-authdays">
+        <div class="s-label"><b>会话有效期（天）</b><div class="s-sub">登录后保持登录状态的时长（1-365 天，默认 7 天）</div></div>
+        <input id="set-auth-days" class="inp" type="number" min="1" max="365" placeholder="7" style="max-width:100px">
+        <button class="op-btn" onclick="saveAuthConfig()">保存</button>
+        <button class="mod-hide" data-mod="m-set-authdays" title="隐藏此模块">✕</button>
+      </div>
+      <div class="set-row" data-mod="m-set-authfnos">
+        <div class="s-label"><b>飞牛账号身份头（Header 名）</b><div class="s-sub">飞牛网关注入当前登录用户名的<b>请求头名称</b>（如 X-Trim-Username），填头名不是用户名；留空则按内置 X-Trim-Username 识别。不确定填什么，点右侧「检测」自动探测：<span id="auth-detect-msg" style="opacity:.9">未检测</span></div></div>
+        <input id="set-auth-fnos-header" class="inp" type="text" placeholder="X-Trim-Username" style="max-width:240px">
+        <button class="op-btn" onclick="detectFnosUser()">检测</button>
+        <button class="op-btn" onclick="saveAuthConfig()">保存</button>
+        <button class="mod-hide" data-mod="m-set-authfnos" title="隐藏此模块">✕</button>
+      </div>
+      <div class="set-row" data-mod="m-set-authproxy">
+        <div class="s-label"><b>可信来源 IP（反代 / 网桥）</b><div class="s-sub">只有来自本机网关（127.0.0.1）或此处填写的 IP 时，身份头才被信任。经反向代理 / Docker 网桥转发时来源 IP 不是回环地址，必须把网关实际来源 IP 填进来（多个用英文逗号分隔，如 127.0.0.1,172.17.0.1），否则飞牛账号授权始终不生效</div></div>
+        <input id="set-auth-fnos-proxy" class="inp" type="text" placeholder="127.0.0.1,172.17.0.1" style="max-width:280px">
+        <button class="op-btn" onclick="saveAuthConfig()">保存</button>
+        <button class="mod-hide" data-mod="m-set-authproxy" title="隐藏此模块">✕</button>
+      </div>
+      <div class="set-row" data-mod="m-set-authpw">
+        <div class="s-label"><b>应用访问口令</b><div class="s-sub">飞牛账号授权不可用时的兜底登录口令（当前：<span id="auth-pw-state">读取中…</span>）。<b>留空 = 不修改</b>；填写并保存后立即生效，之后可用该口令登录</div></div>
+        <input id="set-auth-password" class="inp" type="password" placeholder="留空表示不修改" style="max-width:240px" autocomplete="new-password">
+        <button class="op-btn" onclick="saveAuthConfig()">保存</button>
+        <button class="mod-hide" data-mod="m-set-authpw" title="隐藏此模块">✕</button>
+      </div>
+
       <div class="set-group">流量与功耗</div>
       <div class="set-row" data-mod="m-set-tdp">
         <div class="s-label"><b>CPU TDP（瓦）</b><div class="s-sub">RAPL 不可用时（AMD / ARM）的功耗估算基线。默认 65W，ARM SoC 建议 15-35W</div></div>
@@ -2493,6 +2529,51 @@ async function saveOpenMode(){
     }
   } catch(e){ if (msg) msg.textContent = "请求失败: " + e.message; }
 }
+/* ---------- 登录与授权（飞牛账号授权 / 访问口令） ---------- */
+async function saveAuthConfig(){
+  const msg = $("settings-msg");
+  const data = {};
+  if ($("set-auth-enabled")) data.auth_enabled = $("set-auth-enabled").value;
+  const days = parseInt(($("set-auth-days") || {}).value, 10);
+  if (!isNaN(days)) data.auth_session_days = days;
+  if ($("set-auth-fnos-header")) data.auth_fnos_header = $("set-auth-fnos-header").value.trim();
+  if ($("set-auth-fnos-proxy")) data.auth_fnos_proxy = $("set-auth-fnos-proxy").value.trim();
+  /* 口令留空 = 不修改（避免每次保存其他项把口令清空） */
+  const pw = $("set-auth-password") ? $("set-auth-password").value : "";
+  if (pw) data.auth_password = pw;
+  try {
+    const r = await fetch("/api/config/save", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(data) });
+    const j = await r.json();
+    if (!msg) return;
+    if (j.ok){
+      msg.textContent = "登录与授权配置已保存（立即生效，无需重启）";
+      if (pw){
+        $("set-auth-password").value = "";
+        const st = $("auth-pw-state"); if (st) st.textContent = "已设置";
+      }
+      setTimeout(() => msg.textContent = "", 6000);
+    } else msg.textContent = "保存失败: " + (j.error || "未知错误");
+  } catch(e){ if (msg) msg.textContent = "请求失败: " + e.message; }
+}
+/* 探测当前访问是否已被网关注入飞牛账号身份头，并列出请求中疑似身份头的头名 */
+async function detectFnosUser(){
+  const el = $("auth-detect-msg");
+  if (el) el.textContent = "检测中…";
+  try {
+    const r = await fetch("/api/auth/fnos-detect", { cache: "no-store" });
+    const j = await r.json();
+    if (!el) return;
+    if (j.detected){
+      el.textContent = "✅ 已识别到飞牛账号 " + (j.user || "") + "（生效头：" + (j.header || "") + "）";
+    } else {
+      let tip = "未识别到身份头（请求来源 " + (j.src || "未知") + (j.trusted ? "，已可信" : "，不可信") + "）";
+      if (!j.trusted) tip += "：请把网关来源 IP 填到下方「可信来源 IP」";
+      else if (j.candidates && j.candidates.length) tip += "；请求中疑似身份头：" + j.candidates.join("、") + "（可试填其中一个）";
+      else tip += "：当前访问未携带任何身份头，请经飞牛桌面 / 网关打开本页再检测";
+      el.textContent = "⚠️ " + tip;
+    }
+  } catch(e){ if (el) el.textContent = "检测失败: " + e.message; }
+}
 /* 「数据保存目录」编辑状态：输入与已保存值不一致时显示「取消」，可一键还原 */
 let DATADIR_BASELINE = "";
 function dataDirChanged(){
@@ -2639,6 +2720,12 @@ async function loadConfigForm(){
     if (c.disk_standby_protect != null && $("set-standby-protect")) $("set-standby-protect").value = String(c.disk_standby_protect);
     if (c.traffic_exclude_bridge != null && $("set-bridge")) $("set-bridge").value = c.traffic_exclude_bridge;
     if ((c.open_mode === "url" || c.open_mode === "iframe") && $("set-open-mode")) $("set-open-mode").value = c.open_mode;
+    /* 登录与授权：口令不下发，只回填是否已设置 */
+    if (c.auth_enabled != null && $("set-auth-enabled")) $("set-auth-enabled").value = String(c.auth_enabled);
+    if (c.auth_session_days != null && $("set-auth-days")) $("set-auth-days").value = c.auth_session_days;
+    if (c.auth_fnos_header != null && $("set-auth-fnos-header")) $("set-auth-fnos-header").value = c.auth_fnos_header;
+    if (c.auth_fnos_proxy != null && $("set-auth-fnos-proxy")) $("set-auth-fnos-proxy").value = c.auth_fnos_proxy;
+    if ($("auth-pw-state")) $("auth-pw-state").textContent = c.auth_password_set ? "已设置" : "未设置";
     if (c.data_dir) $("set-data-dir").value = c.data_dir;
     else if (c.data_dir_actual) $("set-data-dir").placeholder = "当前默认：" + c.data_dir_actual;
     // 数据目录 baseline：供「取消」还原 & 判断是否有未保存修改

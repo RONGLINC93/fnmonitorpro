@@ -64,7 +64,10 @@ DEFAULT_CONFIG = {"interval": 10, "retention_days": 7, "port": 0, "history_inter
  # auth_fnos_header=飞牛网关注入当前用户名的 Header 名（如 X-Trim-Username）；留空时自动信任
  #   来自本机网关(loopback)的 X-Trim-Username；配置后则改信任该自定义头（网关级「飞牛账号授权」）。
  # auth_password=应用级兜底访问口令（为空则首次进入需设置；飞牛授权不可用时作为逃生通道）
- "auth_enabled": 1, "auth_session_days": 7, "auth_fnos_header": "", "auth_password": ""}
+ # auth_fnos_proxy=额外可信来源 IP（逗号分隔）：反代 / Docker 网桥转发时请求来源不是
+ #   127.0.0.1，需把网关实际来源 IP 加进来，否则身份头一律不被信任
+ "auth_enabled": 1, "auth_session_days": 7, "auth_fnos_header": "", "auth_password": "",
+ "auth_fnos_proxy": ""}
 # 虚拟网卡前缀（Docker 网桥 / 容器 / VPN 等）：流量与功耗估算统一口径
 VIRT_IFACE_PREFIXES = ("docker", "veth", "br-", "virbr", "tun", "tap", "vnet", "lxc", "kube", "wg")
 
@@ -5085,6 +5088,37 @@ class MonitorApp:
                         return v
                 return ""
 
+            def _fnos_source_trusted(self):
+                """当前请求来源是否可信（本机网关 loopback 或配置的可信代理 IP）。"""
+                src = self.client_address[0] if self.client_address else ""
+                if src in ("127.0.0.1", "::1", "::ffff:127.0.0.1"):
+                    return True
+                proxy = str(app.config.get("auth_fnos_proxy") or "").strip()
+                if proxy:
+                    for p in proxy.split(","):
+                        p = p.strip()
+                        if p and src == p:
+                            return True
+                return False
+
+            def _fnos_detect_info(self):
+                """诊断「飞牛账号授权」：返回当前生效的身份头名、是否已识别到账号、
+                请求来源 IP 与该来源是否可信；来源可信时一并列出请求中所有疑似身份头名
+                ——便于用户确认该把 auth_fnos_header 填成哪个 Header。"""
+                u = self._fnos_trusted_user()
+                names = []
+                if self._fnos_source_trusted():
+                    for k in self.headers.keys():
+                        lk = str(k).lower()
+                        if any(t in lk for t in ("user", "trim", "fnos", "account", "uid")):
+                            names.append(str(k))
+                return {"header": str(app.config.get("auth_fnos_header") or "").strip()
+                        or "X-Trim-Username",
+                        "user": u or None, "detected": bool(u),
+                        "src": self.client_address[0] if self.client_address else "",
+                        "trusted": self._fnos_source_trusted(),
+                        "candidates": names}
+
             def _check_auth(self):
                 """返回 (是否已登录, 会话)。未启用鉴权时直接放行；配置了飞牛网关注入
                 Header 时信任该 Header 自动建立会话（网关级「飞牛账号授权」）。"""
@@ -5123,10 +5157,7 @@ class MonitorApp:
                     self._json(cfg)
                     return
                 if path == "/api/auth/fnos-detect":
-                    u = self._fnos_trusted_user()
-                    self._json({"header": str(app.config.get("auth_fnos_header") or "").strip()
-                                or "X-Trim-Username",
-                                "user": u or None, "detected": bool(u)})
+                    self._json(self._fnos_detect_info())
                     return
                 self.send_error(404, "Not Found")
 
@@ -5376,6 +5407,9 @@ class MonitorApp:
 
     def api_config(self):
         c = dict(self.config)
+        # 访问口令不明文下发给前端，只告知是否已设置（设置页据此显示「已设置」）
+        c.pop("auth_password", None)
+        c["auth_password_set"] = 1 if str(self.config.get("auth_password") or "").strip() else 0
         c["data_dir_actual"] = self.data_dir
         c["ui_file"] = os.path.join(self.data_dir, "ui.json")  # 界面同步设置文件实际位置
         c["version"] = VERSION
@@ -5559,6 +5593,8 @@ class MonitorApp:
             cur["auth_fnos_header"] = str(data["auth_fnos_header"]).strip()
         if "auth_password" in data:
             cur["auth_password"] = str(data["auth_password"])
+        if "auth_fnos_proxy" in data:
+            cur["auth_fnos_proxy"] = str(data["auth_fnos_proxy"]).strip()[:500]
         try:
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(cur, f, ensure_ascii=False, indent=1)
@@ -5598,6 +5634,8 @@ class MonitorApp:
                 self.config["auth_fnos_header"] = str(cur["auth_fnos_header"])
             if "auth_password" in cur:
                 self.config["auth_password"] = str(cur["auth_password"])
+            if "auth_fnos_proxy" in cur:
+                self.config["auth_fnos_proxy"] = str(cur["auth_fnos_proxy"]).strip()
             open_mode_changed = False
             new_mode = str(cur.get("open_mode", "")).lower()
             if new_mode in ("iframe", "url"):
@@ -6583,6 +6621,8 @@ def load_config(data_dir):
             cfg["auth_fnos_header"] = str(user["auth_fnos_header"]).strip()
         if "auth_password" in user:
             cfg["auth_password"] = str(user["auth_password"])
+        if "auth_fnos_proxy" in user:
+            cfg["auth_fnos_proxy"] = str(user["auth_fnos_proxy"]).strip()
     except Exception:
         pass
     return cfg

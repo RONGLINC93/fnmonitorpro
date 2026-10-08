@@ -80,7 +80,7 @@ async function go(){
     $("fnosBox").style.display = "block";
     $("setupBox").style.display = "block";
     $("subtitle").textContent = "请使用飞牛账号授权登录";
-    $("hint").textContent = "优先点「使用飞牛账号授权」（需在飞牛桌面/网关内打开，由网关注入身份）；若无法获取账号，可在下方先设置本地访问口令后凭口令登录。后续可在 config.json 配置 auth_fnos_header / auth_password。";
+    $("hint").textContent = "优先点「使用飞牛账号授权」（需在飞牛桌面/网关内打开，由网关注入身份）；若无法获取账号，可在下方先设置本地访问口令后凭口令登录。登录后在「设置 → 登录与授权」可配置身份头 / 可信来源 IP / 访问口令（等同于 config.json 的 auth_fnos_header / auth_fnos_proxy / auth_password）。";
   } else {
     // 已配置过授权方式：未设置口令则提供「设置口令」入口，已设置则提供「口令登录」
     if (!cfg.requires_password){ $("setupBox").style.display = "block"; }
