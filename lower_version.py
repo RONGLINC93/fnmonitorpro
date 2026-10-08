@@ -28,20 +28,10 @@ import os
 import re
 import sys
 
-# 无控制台环境（pythonw / .pyw）下 sys.stdout 为 None，print 会崩溃；重定向到空设备丢弃。
-if sys.stdout is None:
-    sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
-    sys.stderr = sys.stdout
-
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(ROOT, "manifest")
 
-sys.path.insert(0, ROOT)
-try:
-    import ver_gui
-    HAVE_GUI = True
-except Exception:
-    HAVE_GUI = False
+import ver_menu
 
 
 def read_manifest():
@@ -238,30 +228,27 @@ def main():
             return 1
         new = mode
     else:
-        if HAVE_GUI:
-            newp = dec_one(cur)
-            newm = compute_lower("minor", cur)
-            newj = compute_lower("major", cur)
+        newp = dec_one(cur)
+        newm = compute_lower("minor", cur)
+        newj = compute_lower("major", cur)
 
-            def _validate(v):
-                if not is_valid_version(v):
-                    return (False, "版本号格式不正确（示例 2.16.5）")
-                if parse_version_tuple(v) >= parse_version_tuple(cur):
-                    return (False, "该版本不低于当前版本 %s，请用 bump_version.py 递增。" % cur)
-                return (True, "")
+        def _validate(v):
+            if not is_valid_version(v):
+                return (False, "版本号格式不正确（示例 2.16.5）")
+            if parse_version_tuple(v) >= parse_version_tuple(cur):
+                return (False, "该版本不低于当前版本 %s，请用 bump_version.py 递增。" % cur)
+            return (True, "")
 
-            entries = [
-                ("补丁号 -1  -> %s" % newp, newp),
-                ("次版本 -1  -> %s" % (newm if newm else "（已是最低）"),
-                 newm if newm else ver_gui.DISABLED),
-                ("主版本 -1  -> %s" % (newj if newj else "（已是最低）"),
-                 newj if newj else ver_gui.DISABLED),
-                ("自定义更低版本号...", None),
-            ]
-            new = ver_gui.pick_version(
-                "lower_version - 选择降低模式", cur, entries, validate=_validate)
-        else:
-            new = choose_interactive(cur)
+        entries = [
+            ("补丁号 -1  -> %s" % newp, newp),
+            ("次版本 -1  -> %s" % (newm if newm else "（已是最低）"),
+             newm if newm else ver_menu.DISABLED),
+            ("主版本 -1  -> %s" % (newj if newj else "（已是最低）"),
+             newj if newj else ver_menu.DISABLED),
+            ("自定义更低版本号...", None),
+        ]
+        new = ver_menu.console_select(
+            "lower_version - 选择降低模式", cur, entries, validate=_validate)
         if new is None:
             return 0
 
@@ -275,12 +262,7 @@ def main():
         print("[提示] 新版本与当前版本相同，无需修改。")
         return 0
 
-    if HAVE_GUI:
-        ok = ver_gui.confirm_dialog(
-            "确认写入",
-            "确认写入 manifest？\n\n新版本：%s（开发版）\nversion_released：%s" % (new, rel))
-    else:
-        ok = confirm("确认写入 manifest？(Y/n) ")
+    ok = confirm("确认写入 manifest？(Y/n) ")
     if not ok:
         print("[取消] 未做任何修改。")
         return 0
