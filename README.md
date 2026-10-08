@@ -53,7 +53,8 @@ https://github.com/RONGLINC93/FnDepot
 
 ```powershell
 # 需 Python 3
-.\build.ps1
+python build.py
+# （也可用原 PowerShell 脚本：.\build.ps1）
 ```
 
 ### Linux / fnOS
@@ -73,7 +74,7 @@ cmd/                    飞牛生命周期脚本（安装回调、启动、卸�
 config/                 飞牛权限与资源声明（以 root 运行）
 app/server.py           后端：采集 + SQLite 历史 + HTTP API（零依赖）
 app/www/index.html      前端：单文件面板（原生 JS + SVG 图表）
-build.ps1 / build.sh    Windows / Linux 双架构打包脚本
+build.py / build.ps1 / build.sh    Windows / Linux 双架构打包脚本（推荐 build.py）
 make_icon.py            应用图标生成（不覆盖已有图标）
 ```
 
