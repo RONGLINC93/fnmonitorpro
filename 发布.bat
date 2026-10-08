@@ -10,6 +10,9 @@ rem ============ 发布.bat ============
 rem 用途：构建安装包 -> 打版本标签 -> 推送标签 -> 创建 GitHub Release 并上传 fpk
 rem 用法：发布.bat            （版本号自动读取 manifest 的 version=）
 rem       发布.bat 2.17.0      （指定版本号）
+rem 发布成功后自动递增版本号：manifest 的 version 递增到下一补丁（如 2.17.2 -> 2.17.3），
+rem       作为下一开发版；version_released 设为本次发布的版本（如 2.17.2），UI 据此区分
+rem       「已发布版 / 开发版」。发布失败（缺凭据 / 网络错误）不递增。
 rem 凭据：优先用 .env 中的 GITHUB_TOKEN（无需装 gh）；其次用 gh（需已登录）
 rem       两者都没有时只构建，并提示手动创建 Release
 rem 仓库: RONGLINC93/fnmonitorpro
@@ -141,6 +144,11 @@ rem ---- 7. 结果汇总 ----
 echo.
 :summary
 echo.
+rem ---- 7. 发布成功后自动递增开发版本号 ----
+if "%RELOK%"=="1" (
+  echo [递增] 发布成功，自动递增 manifest 开发版本号（version -> 下一补丁，version_released=本次发布版）...
+  python -c "import io,re; p='manifest'; s=io.open(p,encoding='utf-8',newline='').read(); ver='%VER%'.lstrip('v'); parts=ver.split('.'); parts[-1]=str(int(parts[-1])+1); nxt='.'.join(parts); s=re.sub(r'(?m)^version=.*$','version='+nxt,s,count=1); s=re.sub(r'(?m)^version_released=.*$','version_released='+ver,s,count=1); io.open(p,'w',encoding='utf-8',newline='').write(s); print('[完成] 开发版本号已递增为 '+nxt+'，version_released='+ver)"
+)
 echo ============== 发布结果 ==============
 if "%RELOK%"=="1" (
   echo [成功] v%VER% 发布完成：标签 + Release + 安装包均已就绪
