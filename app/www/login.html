@@ -76,18 +76,20 @@ async function go(){
   try { const r = await fetch('/api/auth/config', { cache:"no-store" }); cfg = await r.json(); } catch(e){}
   if (!cfg.auth_enabled){ location.href = '/'; return; }
   if (cfg.setup_mode){
-    // 首次使用：优先飞牛账号授权；若桌面无法下发账号，则回退设置本地口令
+    // 首次使用（未配置任何授权方式）：优先飞牛账号授权；同时提供设置本地口令入口
     $("fnosBox").style.display = "block";
     $("setupBox").style.display = "block";
     $("subtitle").textContent = "请使用飞牛账号授权登录";
-    $("hint").textContent = "当前未配置授权方式：优先点「使用飞牛账号授权」（需在飞牛桌面内打开）；若桌面无法下发账号，可在下方设置本地访问口令后凭口令登录。后续可在 config.json 配置 auth_fnos_header / auth_password。";
+    $("hint").textContent = "优先点「使用飞牛账号授权」（需在飞牛桌面/网关内打开，由网关注入身份）；若无法获取账号，可在下方先设置本地访问口令后凭口令登录。后续可在 config.json 配置 auth_fnos_header / auth_password。";
   } else {
-    if (cfg.requires_password){ $("pwBox").style.display = "block"; }
-    if (cfg.fnos_sso || window.self !== window.top){
+    // 已配置过授权方式：未设置口令则提供「设置口令」入口，已设置则提供「口令登录」
+    if (!cfg.requires_password){ $("setupBox").style.display = "block"; }
+    else { $("pwBox").style.display = "block"; }
+    if (cfg.fnos_sso || cfg.fnos_detected || window.self !== window.top){
       $("fnosBox").style.display = "block";
+      $("hint").textContent = "已检测到飞牛网关身份，点「使用飞牛账号授权」即可一键登录；也可用下方访问口令登录。";
     } else {
-      $("fnosBox").style.display = "block";
-      $("hint").textContent = "未检测到飞牛桌面环境：飞牛账号授权需在飞牛桌面内打开本应用；或请在设置中配置应用口令后使用口令登录。";
+      $("hint").textContent = "未检测到飞牛桌面/网关环境：飞牛账号授权需经飞牛桌面或网关打开本应用才会下发身份；当前可直接使用下方「应用访问口令」登录（首次进入请先设置口令）。";
     }
   }
 }
@@ -95,36 +97,21 @@ async function go(){
 $("fnosBtn").onclick = async () => {
   const btn = $("fnosBtn");
   btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>正在授权…';
-  // 1) URL 注入（fnOS 桌面可能经查询参数下发）
-  let user = "", token = "";
+  // 优先使用 URL 参数下发的账号（部分环境经查询参数传递）；
+  // 其余由服务端从飞牛网关注入的请求头（X-Trim-Username）自动识别当前登录用户。
+  let user = "";
   try {
     const q = new URLSearchParams(location.search);
     user = (q.get('fnos_user') || "").trim();
-    token = (q.get('fnos_token') || "").trim();
   } catch(e){}
-  // 2) 飞牛桌面经 postMessage 下发当前登录用户（同源可信）
-  if (window.self !== window.top && !user){
-    user = await new Promise((resolve) => {
-      const t = setTimeout(() => resolve(null), 1500);
-      window.addEventListener('message', function h(ev){
-        const d = ev.data || {};
-        if (d && (d.type === 'fnmonitorpro-auth-response' || d.type === 'fnos-user')){
-          clearTimeout(t); window.removeEventListener('message', h);
-          resolve(d.user || d.username || null);
-        }
-      });
-      try { parent.postMessage({ type:'fnmonitorpro-auth-request' }, '*'); } catch(e){}
+  let d = {};
+  try {
+    const r = await fetch('/api/auth/fnos', {
+      method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ user: user })
     });
-  }
-  if (!user){
-    msg("未能获取飞牛账号：请在飞牛桌面内打开本应用，或配置应用口令登录。");
-    btn.disabled = false; btn.textContent = "使用飞牛账号授权"; return;
-  }
-  const r = await fetch('/api/auth/fnos', {
-    method:'POST', headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ user: user, token: token })
-  });
-  const d = await r.json();
+    d = await r.json();
+  } catch(e){}
   if (d.ok){ location.href = '/'; }
   else { msg(d.error || "授权失败"); btn.disabled = false; btn.textContent = "使用飞牛账号授权"; }
 };

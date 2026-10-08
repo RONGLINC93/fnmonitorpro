@@ -61,8 +61,9 @@ UPDATE_CHECK_INTERVAL = 6 * 3600           # 自动更新检查周期（6 小时
 GH_MIRRORS = ["", "https://gh-proxy.com/", "https://ghfast.top/", "https://ghproxy.net/", "https://gh.llkk.cc/"]
 DEFAULT_CONFIG = {"interval": 10, "retention_days": 7, "port": 0, "history_interval": 60, "weather_city": "", "data_dir": "", "update_autocheck": 1, "update_autodownload": 0, "update_autoupdate": 0, "traffic_exclude_bridge": 0, "power_tdp_w": 65, "power_rate_yuan": 0.6, "power_disk_typical_w": 8, "power_nic_fixed_w": 5, "power_base_w": 8, "disk_standby_protect": 1, "open_mode": "url",
  # 登录鉴权（飞牛账号授权）：auth_enabled=是否启用登录；auth_session_days=会话有效期(天)；
- # auth_fnos_header=飞牛网关注入当前用户名的 Header 名（配置后信任该 Header 自动建会话，实现网关级授权）；
- # auth_password=应用级兜底访问口令（为空则禁用，飞牛授权不可用时作为逃生通道）
+ # auth_fnos_header=飞牛网关注入当前用户名的 Header 名（如 X-Trim-Username）；留空时自动信任
+ #   来自本机网关(loopback)的 X-Trim-Username；配置后则改信任该自定义头（网关级「飞牛账号授权」）。
+ # auth_password=应用级兜底访问口令（为空则首次进入需设置；飞牛授权不可用时作为逃生通道）
  "auth_enabled": 1, "auth_session_days": 7, "auth_fnos_header": "", "auth_password": ""}
 # 虚拟网卡前缀（Docker 网桥 / 容器 / VPN 等）：流量与功耗估算统一口径
 VIRT_IFACE_PREFIXES = ("docker", "veth", "br-", "virbr", "tun", "tap", "vnet", "lxc", "kube", "wg")
@@ -4697,14 +4698,17 @@ class MonitorApp:
         return {"auth_enabled": auth_on, "fnos_sso": bool(header),
                 "requires_password": bool(pw), "setup_mode": setup}
 
-    def api_auth_fnos(self, data):
-        """飞牛账号授权：信任飞牛桌面（postMessage）或网关下发的当前登录用户。"""
+    def api_auth_fnos(self, data, req_user=""):
+        """飞牛账号授权：优先使用网关注入的请求头身份（X-Trim-Username / 自定义头），
+        其次使用请求体显式传入的 user（兼容 URL 参数等场景）。"""
         if not bool(int(self.config.get("auth_enabled", 1) or 0)):
             return {"ok": True, "user": "(未启用鉴权)"}, None, 0
-        user = str((data or {}).get("user") or "").strip()
-        token = str((data or {}).get("token") or "").strip()
+        user = str((data or {}).get("user") or "").strip() or str(req_user or "").strip()
         if not user:
-            return {"ok": False, "error": "缺少飞牛账号信息"}, None, 0
+            return {"ok": False, "error":
+                    "未能获取飞牛账号：当前访问未携带飞牛网关注入的身份头"
+                    "（请经飞牛桌面 / 网关打开本应用），或先在 config.json 配置 auth_fnos_header；"
+                    "也可直接使用下方「应用访问口令」登录。"}, None, 0
         sid, ma = self._create_session(user, "fnos")
         return {"ok": True, "user": user}, sid, ma
 
@@ -5055,6 +5059,32 @@ class MonitorApp:
                 self._pending_cookies.append(
                     "fnmp_sid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
 
+            def _fnos_trusted_user(self):
+                """读取飞牛网关注入的当前登录用户名。
+                仅当请求来自本机网关(loopback)或已配置的可信代理时才信任该身份头，
+                避免局域网直连应用端口时客户端自行伪造 X-Trim-* 头绕过登录。
+                优先使用 config 中显式配置的 auth_fnos_header，其次内置信任 X-Trim-Username。"""
+                cands = []
+                cfg_hdr = str(app.config.get("auth_fnos_header") or "").strip()
+                if cfg_hdr:
+                    cands.append(cfg_hdr)
+                cands.append("X-Trim-Username")
+                src = self.client_address[0] if self.client_address else ""
+                trusted = src in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+                proxy = str(app.config.get("auth_fnos_proxy") or "").strip()
+                if proxy:
+                    for p in proxy.split(","):
+                        p = p.strip()
+                        if p and src == p:
+                            trusted = True
+                if not trusted:
+                    return ""
+                for h in cands:
+                    v = (self.headers.get(h) or "").strip()
+                    if v:
+                        return v
+                return ""
+
             def _check_auth(self):
                 """返回 (是否已登录, 会话)。未启用鉴权时直接放行；配置了飞牛网关注入
                 Header 时信任该 Header 自动建立会话（网关级「飞牛账号授权」）。"""
@@ -5063,13 +5093,11 @@ class MonitorApp:
                 sid = self._read_sid()
                 sess = app._get_session(sid) if sid else None
                 if not sess:
-                    hdr = str(app.config.get("auth_fnos_header") or "").strip()
-                    if hdr:
-                        u = (self.headers.get(hdr) or "").strip()
-                        if u:
-                            nsid, ma = app._create_session(u, "fnos-gateway")
-                            self._set_sid_cookie(nsid, ma)
-                            sess = app._get_session(nsid)
+                    u = self._fnos_trusted_user()
+                    if u:
+                        nsid, ma = app._create_session(u, "fnos-gateway")
+                        self._set_sid_cookie(nsid, ma)
+                        sess = app._get_session(nsid)
                 return bool(sess), sess
 
             def _read_json_body(self):
@@ -5090,14 +5118,22 @@ class MonitorApp:
                     self._json(app.api_auth_session(sess if authed else None))
                     return
                 if path == "/api/auth/config":
-                    self._json(app.api_auth_config())
+                    cfg = app.api_auth_config()
+                    cfg["fnos_detected"] = bool(self._fnos_trusted_user())
+                    self._json(cfg)
+                    return
+                if path == "/api/auth/fnos-detect":
+                    u = self._fnos_trusted_user()
+                    self._json({"header": str(app.config.get("auth_fnos_header") or "").strip()
+                                or "X-Trim-Username",
+                                "user": u or None, "detected": bool(u)})
                     return
                 self.send_error(404, "Not Found")
 
             def _handle_auth_post(self, path):
                 data = self._read_json_body()
                 if path == "/api/auth/fnos":
-                    res, sid, ma = app.api_auth_fnos(data)
+                    res, sid, ma = app.api_auth_fnos(data, req_user=self._fnos_trusted_user())
                     if sid:
                         self._set_sid_cookie(sid, ma)
                     self._json(res)
