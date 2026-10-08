@@ -14,4 +14,4 @@ desktop_applaunchname=fnmonitorpro.Application
 service_port=8778
 checkport=true
 disable_authorization_path=false
-changelog=<b>退出登录移至顶栏右上角</b>：登录态（当前用户名 + 退出登录）由页脚移到顶栏右上角（全屏 / 刷新 / 主题按钮旁），未登录时自动隐藏、已登录时显示，移动端顶栏换行仍正常；移除页脚中冗余的登录态文本
+changelog=
