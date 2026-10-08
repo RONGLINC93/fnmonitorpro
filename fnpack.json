@@ -27,7 +27,24 @@
    "is_docker": false,
    "service_port": "8778",
    "releases": {
-     "2.17.0": {
+    "2.17.1": {
+     "changelog": "v2.17.1 ① 修复「飞牛账号授权」登录失败：飞牛网关注入的当前登录用户经 HTTP 请求头（X-Trim-Username）下发，旧版登录页错误地依赖浏览器端 postMessage / URL 参数获取账号（飞牛并不下发该信息），导致点「使用飞牛账号授权」始终报「未能获取飞牛账号」；现服务端改为信任网关注入的身份头（仅限本机网关回环来源，防止局域网直连端口被伪造头绕过登录）自动建会话，登录页按钮改为由服务端解析身份，并新增 /api/auth/fnos-detect 诊断接口便于确认网关是否注入身份头；登录页保证「应用访问口令」（设置 / 登录）入口始终可用，网关会话隐藏无意义的退出按钮（网关每次请求自动重建会话）",
+     "updated_at": "2026-10-08T00:00:00+08:00",
+     "os_min_version": "0.9.0",
+     "packages": {
+      "x86": {
+       "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/v2.17.1/fnmonitorpro-2.17.1-x86.fpk",
+       "sha256": "REPLACE_WITH_REAL_SHA256_AFTER_BUILD",
+       "size": 0
+      },
+      "arm": {
+       "download_url": "https://github.com/RONGLINC93/fnmonitorpro/releases/download/v2.17.1/fnmonitorpro-2.17.1-arm.fpk",
+       "sha256": "REPLACE_WITH_REAL_SHA256_AFTER_BUILD",
+       "size": 0
+      }
+     }
+    },
+    "2.17.0": {
       "changelog": "v2.17.0 更名「飞牛监控pro」（应用名/图标 PRO 角标/应用 ID fnmonitorpro）、默认端口 8777→8778、新增风扇温度曲线控制（可视化拐点编辑+后台守护调速）、风扇控制交互重构（下拉选模式+统一保存按钮+实时检测+五档卡片尺寸+风扇重命名）、交还 BIOS 升级为三级降级并支持一键交还所有风扇",
       "updated_at": "2026-10-07T00:00:00+08:00",
       "os_min_version": "0.9.0",
