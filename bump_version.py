@@ -9,13 +9,16 @@
 作为新的已发布版本记录——使 UI 正确区分「已发布版 / 开发版」。
 
 用法：
-  bump_version.py               交互菜单：1=patch / 2=minor / 3=major / 4=自定义
+  bump_version.py               交互菜单（点击式 GUI：补丁+1 / 次版本+1 / 主版本+1 / 自定义）
   bump_version.py patch         补丁号 +1   （2.17.1 -> 2.17.2）
   bump_version.py minor         次版本 +1   （2.17.1 -> 2.18.0）
   bump_version.py major         主版本 +1   （2.17.1 -> 3.0.0）
-  bump_version.py 2.18.0        直接指定版本号
+  bump_version.py 2.18.0        直接指定版本号（无 GUI 依赖，适合脚本/CI）
   bump_version.py --no-changelog  仅递增 version/version_released，不更新 changelog
   bump_version.py /?            显示用法
+
+注：无参数运行时，若环境支持 tkinter 会弹出点击式窗口选择递增模式；
+传入 patch/minor/major/版本号 等参数则直接进入对应逻辑（无需 GUI，便于自动化）。
 
 默认行为：递增版本后会同步在 manifest 的 changelog 顶部新增该新版本的更新日志
 （优先从 README.md「📋 版本历史」表自动获取，**加粗**自动转 <b>…</b>；
@@ -27,8 +30,20 @@ import os
 import re
 import sys
 
+# 无控制台环境（pythonw / .pyw）下 sys.stdout 为 None，print 会崩溃；重定向到空设备丢弃。
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
+    sys.stderr = sys.stdout
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(ROOT, "manifest")
+
+sys.path.insert(0, ROOT)
+try:
+    import ver_gui
+    HAVE_GUI = True
+except Exception:
+    HAVE_GUI = False
 
 
 def read_manifest():
@@ -164,7 +179,12 @@ def sync_changelog(text, ver):
         print("")
         print("=== bump 后：为 v%s 填写更新日志 ===" % ver)
         print("[提示] README.md「版本历史」未找到 v%s，请手动输入内容（或直接回车跳过，稍后运行 changelog.py）：" % ver)
-        content = read_multiline()
+        if HAVE_GUI:
+            content = ver_gui.multiline_dialog(
+                "为 v%s 填写更新日志" % ver,
+                "README.md 未找到 v%s 的版本历史。\n请逐行输入更新内容，每行一条；点击「确定」结束（空内容则跳过）。" % ver)
+        else:
+            content = read_multiline()
         if not content:
             print("[提示] 未填写 v%s 更新日志，changelog 未改动（请稍后补）。" % ver)
             return text
@@ -209,7 +229,18 @@ def main():
             return 1
         new = mode
     else:
-        new = choose_interactive(cur)
+        if HAVE_GUI:
+            entries = [
+                ("补丁号 +1  -> %s" % compute_new("patch", cur), compute_new("patch", cur)),
+                ("次版本 +1  -> %s" % compute_new("minor", cur), compute_new("minor", cur)),
+                ("主版本 +1  -> %s" % compute_new("major", cur), compute_new("major", cur)),
+                ("自定义版本号...", None),
+            ]
+            new = ver_gui.pick_version(
+                "bump_version - 选择递增模式", cur, entries,
+                validate=lambda v: (is_valid_version(v), "版本号格式不正确（示例 2.18.0）"))
+        else:
+            new = choose_interactive(cur)
         if new is None:
             return 0
 
@@ -223,7 +254,13 @@ def main():
         print("[提示] 新版本与当前版本相同，无需修改。")
         return 0
 
-    if not confirm("确认写入 manifest？(Y/n) "):
+    if HAVE_GUI:
+        ok = ver_gui.confirm_dialog(
+            "确认写入",
+            "确认写入 manifest？\n\n新版本：%s（开发版）\nversion_released：%s" % (new, rel))
+    else:
+        ok = confirm("确认写入 manifest？(Y/n) ")
+    if not ok:
         print("[取消] 未做任何修改。")
         return 0
 
@@ -261,7 +298,7 @@ if __name__ == "__main__":
         rc = main()
     except KeyboardInterrupt:
         rc = 0
-    if sys.stdin.isatty():
+    if sys.stdin is not None and sys.stdin.isatty():
         try:
             input("\n按 Enter 键退出...")
         except (EOFError, KeyboardInterrupt):

@@ -9,13 +9,16 @@
 保持与 bump_version.py 一致的「已发布版 / 开发版」记录规则。
 
 用法：
-  lower_version.py               交互菜单：1=patch / 2=minor / 3=major / 4=自定义
+  lower_version.py               交互菜单（点击式 GUI：补丁-1 / 次版本-1 / 主版本-1 / 自定义）
   lower_version.py patch         补丁号 -1   （2.17.2 -> 2.17.1；2.18.0 -> 2.17.0）
   lower_version.py minor         次版本 -1   （2.18.0 -> 2.17.0；3.0.0 -> 2.0.0）
   lower_version.py major         主版本 -1   （3.0.0 -> 2.0.0）
-  lower_version.py 2.16.5        直接指定更低的版本号
+  lower_version.py 2.16.5        直接指定更低的版本号（无 GUI 依赖，适合脚本/CI）
   lower_version.py --keep-changelog  仅降低 version/version_released，不改动 changelog
   lower_version.py /?            显示用法
+
+注：无参数运行时，若环境支持 tkinter 会弹出点击式窗口选择降低模式；
+传入 patch/minor/major/版本号 等参数则直接进入对应逻辑（无需 GUI，便于自动化）。
 
 默认行为：降低版本后会同步裁剪 manifest 的 changelog——移除其中版本号高于新版本
 的条目（回退开发版时不应保留更高版本的更新日志），其余条目原样保留。
@@ -25,8 +28,20 @@ import os
 import re
 import sys
 
+# 无控制台环境（pythonw / .pyw）下 sys.stdout 为 None，print 会崩溃；重定向到空设备丢弃。
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8", errors="replace")
+    sys.stderr = sys.stdout
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(ROOT, "manifest")
+
+sys.path.insert(0, ROOT)
+try:
+    import ver_gui
+    HAVE_GUI = True
+except Exception:
+    HAVE_GUI = False
 
 
 def read_manifest():
@@ -223,7 +238,30 @@ def main():
             return 1
         new = mode
     else:
-        new = choose_interactive(cur)
+        if HAVE_GUI:
+            newp = dec_one(cur)
+            newm = compute_lower("minor", cur)
+            newj = compute_lower("major", cur)
+
+            def _validate(v):
+                if not is_valid_version(v):
+                    return (False, "版本号格式不正确（示例 2.16.5）")
+                if parse_version_tuple(v) >= parse_version_tuple(cur):
+                    return (False, "该版本不低于当前版本 %s，请用 bump_version.py 递增。" % cur)
+                return (True, "")
+
+            entries = [
+                ("补丁号 -1  -> %s" % newp, newp),
+                ("次版本 -1  -> %s" % (newm if newm else "（已是最低）"),
+                 newm if newm else ver_gui.DISABLED),
+                ("主版本 -1  -> %s" % (newj if newj else "（已是最低）"),
+                 newj if newj else ver_gui.DISABLED),
+                ("自定义更低版本号...", None),
+            ]
+            new = ver_gui.pick_version(
+                "lower_version - 选择降低模式", cur, entries, validate=_validate)
+        else:
+            new = choose_interactive(cur)
         if new is None:
             return 0
 
@@ -237,7 +275,13 @@ def main():
         print("[提示] 新版本与当前版本相同，无需修改。")
         return 0
 
-    if not confirm("确认写入 manifest？(Y/n) "):
+    if HAVE_GUI:
+        ok = ver_gui.confirm_dialog(
+            "确认写入",
+            "确认写入 manifest？\n\n新版本：%s（开发版）\nversion_released：%s" % (new, rel))
+    else:
+        ok = confirm("确认写入 manifest？(Y/n) ")
+    if not ok:
         print("[取消] 未做任何修改。")
         return 0
 
@@ -287,7 +331,7 @@ if __name__ == "__main__":
         rc = main()
     except KeyboardInterrupt:
         rc = 0
-    if sys.stdin.isatty():
+    if sys.stdin is not None and sys.stdin.isatty():
         try:
             input("\n按 Enter 键退出...")
         except (EOFError, KeyboardInterrupt):
