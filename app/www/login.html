@@ -5,41 +5,142 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>飞牛监控pro · 登录</title>
 <style>
-  :root{ --bg:#0f1419; --card:#1a212b; --accent:#3b82f6; --text:#e6edf3; --muted:#8b98a5; --border:#2a3340; }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; height:100%; }
-  body{ background:radial-gradient(1200px 600px at 50% -10%, #16324f 0%, var(--bg) 60%);
-        color:var(--text); min-height:100%;
-        font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
-        display:flex; align-items:center; justify-content:center; padding:20px; }
-  .card{ background:var(--card); border:1px solid var(--border); border-radius:16px;
-         padding:36px 32px; width:360px; max-width:92vw; box-shadow:0 20px 60px rgba(0,0,0,.4); }
-  .brand{ display:flex; align-items:center; gap:12px; margin-bottom:4px; }
-  .logo{ width:42px; height:42px; border-radius:10px;
-         background:linear-gradient(135deg,#3b82f6,#22d3ee);
-         display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; color:#fff; }
-  h1{ font-size:18px; margin:0; }
-  .sub{ color:var(--muted); font-size:13px; margin:2px 0 22px; }
-  .btn{ display:block; width:100%; padding:12px 14px; border:0; border-radius:10px;
-        font-size:15px; font-weight:600; cursor:pointer; transition:.15s; }
-  .btn-primary{ background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; }
-  .btn-primary:hover{ filter:brightness(1.08); }
-  .btn-primary:disabled{ opacity:.7; cursor:default; }
-  input{ width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--border);
-         background:#0f1620; color:var(--text); font-size:14px; margin-top:8px; }
-  .msg{ margin-top:14px; font-size:13px; min-height:18px; color:#f87171; }
-  .msg.ok{ color:#34d399; }
-  .hint{ margin-top:16px; font-size:12px; color:var(--muted); line-height:1.6; }
-  .row{ display:none; }
-  .spinner{ display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.4);
-            border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite;
-            vertical-align:-2px; margin-right:6px; }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
+/* ============================================================
+   fnMonitor 设计系统 —— 与主应用统一的 7 套主题
+   仅覆盖颜色变量，组件样式由令牌派生；登录页背景随当前主题变化
+   ============================================================ */
+:root{
+  /* 表面色（暗黑为默认兜底） */
+  --bg:#0b0f1a; --bg2:#111827; --card:#111827; --card2:#18213a;
+  --border:#1f2a3d; --text:#e5e9f2; --muted:#94a3b8; --dim:#64748b;
+  --sky:#38bdf8; --violet:#a78bfa; --emerald:#34d399; --amber:#fbbf24;
+  --red:#f87171; --rose:#f472b6;
+  --accent:#10b981; --accent-soft:rgba(16,185,129,.14);
+  --bar-track:#0d1326; --row-border:#1a2440; --topbar-bg:rgba(13,18,30,.85);
+  --shadow-md:0 4px 12px -4px rgba(0,0,0,.35),0 16px 40px -16px rgba(0,0,0,.45);
+  --radius:16px;
+  color-scheme:dark;
+}
+:root[data-theme="dark"]{
+  --bg:#0b0f1a; --bg2:#111827; --card:#111827; --card2:#18213a;
+  --border:#1f2a3d; --text:#e5e9f2; --muted:#94a3b8; --dim:#64748b;
+  --sky:#38bdf8; --violet:#a78bfa; --emerald:#34d399; --amber:#fbbf24;
+  --red:#f87171; --rose:#f472b6;
+  --accent:#10b981; --accent-soft:rgba(16,185,129,.16);
+  --bar-track:#0d1326; --row-border:#1a2440; --topbar-bg:rgba(13,18,30,.85);
+  color-scheme:dark;
+}
+:root[data-theme="light"]{
+  --bg:#f1f3f6; --bg2:#f8fafc; --card:#ffffff; --card2:#f2f5f9;
+  --border:#e4e8ef; --text:#0f172a; --muted:#64748b; --dim:#98a2b3;
+  --sky:#0284c7; --violet:#7c3aed; --emerald:#059669; --amber:#d97706;
+  --red:#dc2626; --rose:#db2777;
+  --accent:#475569; --accent-soft:rgba(71,85,105,.1);
+  --bar-track:#e8edf4; --row-border:#eef2f7; --topbar-bg:rgba(255,255,255,.82);
+  --shadow-md:0 4px 10px -4px rgba(15,23,42,.1),0 18px 40px -18px rgba(15,23,42,.18);
+  color-scheme:light;
+}
+:root[data-theme="blue"]{
+  --bg:#f4f7fc; --bg2:#f8fafd; --card:#ffffff; --card2:#eff4fb;
+  --border:#dde6f2; --text:#12233f; --muted:#51688c; --dim:#8ea3c2;
+  --sky:#0e7fff; --violet:#5b6bf0; --emerald:#0aa06e; --amber:#f59e0b;
+  --red:#e5484d; --rose:#e04f8f;
+  --accent:#2563eb; --accent-soft:rgba(37,99,235,.1);
+  --bar-track:#e3ecf7; --row-border:#e8eef7; --topbar-bg:rgba(255,255,255,.82);
+  --shadow-md:0 4px 10px -4px rgba(18,35,63,.1),0 18px 40px -18px rgba(18,35,63,.2);
+  color-scheme:light;
+}
+:root[data-theme="fresh"]{
+  --bg:#f5f6f8; --bg2:#f9fafb; --card:#ffffff; --card2:#f3f6f8;
+  --border:#e6e9ef; --text:#101828; --muted:#667085; --dim:#98a2b3;
+  --sky:#059669; --violet:#6a8cff; --emerald:#10b981; --amber:#f0a028;
+  --red:#ef4444; --rose:#ec5f8a;
+  --accent:#059669; --accent-soft:rgba(5,150,105,.1);
+  --bar-track:#e9edf1; --row-border:#eef1f5; --topbar-bg:rgba(255,255,255,.82);
+  --shadow-md:0 4px 10px -4px rgba(16,24,40,.1),0 18px 40px -18px rgba(16,24,40,.18);
+  color-scheme:light;
+}
+:root[data-theme="green"]{
+  --bg:#f2f8f3; --bg2:#f8fbf8; --card:#ffffff; --card2:#eef7ef;
+  --border:#dbeadf; --text:#14301f; --muted:#4c7a5e; --dim:#8fb39c;
+  --sky:#16a34a; --violet:#5b8def; --emerald:#10b981; --amber:#d97706;
+  --red:#dc2626; --rose:#db2777;
+  --accent:#16a34a; --accent-soft:rgba(22,163,74,.12);
+  --bar-track:#dcebe1; --row-border:#e3efe6; --topbar-bg:rgba(255,255,255,.84);
+  --shadow-md:0 4px 10px -4px rgba(20,48,31,.1),0 18px 40px -18px rgba(20,48,31,.18);
+  color-scheme:light;
+}
+:root[data-theme="yellow"]{
+  --bg:#faf8f1; --bg2:#fdfbf4; --card:#ffffff; --card2:#faf4e4;
+  --border:#ece1c8; --text:#3b2f12; --muted:#8a7440; --dim:#b3a06f;
+  --sky:#ca8a04; --violet:#8a7a3a; --emerald:#a16207; --amber:#f59e0b;
+  --red:#dc2626; --rose:#db2777;
+  --accent:#d97706; --accent-soft:rgba(217,119,6,.12);
+  --bar-track:#f0e7cf; --row-border:#f3ecdb; --topbar-bg:rgba(255,255,255,.84);
+  --shadow-md:0 4px 10px -4px rgba(59,47,18,.1),0 18px 40px -18px rgba(59,47,18,.18);
+  color-scheme:light;
+}
+:root[data-theme="cyan"]{
+  --bg:#f1f9fb; --bg2:#f7fcfd; --card:#ffffff; --card2:#e9f6f9;
+  --border:#d5eaf0; --text:#0f3138; --muted:#3f7180; --dim:#8ab2bd;
+  --sky:#0891b2; --violet:#5b8def; --emerald:#0d9488; --amber:#d97706;
+  --red:#dc2626; --rose:#db2777;
+  --accent:#0891b2; --accent-soft:rgba(8,145,178,.11);
+  --bar-track:#d9edf3; --row-border:#e4f2f6; --topbar-bg:rgba(255,255,255,.84);
+  --shadow-md:0 4px 10px -4px rgba(15,49,56,.1),0 18px 40px -18px rgba(15,49,56,.18);
+  color-scheme:light;
+}
+
+/* ===== 基础 ===== */
+*{ box-sizing:border-box; }
+html,body{ margin:0; height:100%; }
+html{ background:var(--bg); }
+body{ background:var(--bg); color:var(--text); min-height:100%;
+      font-family:"Inter","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      display:flex; align-items:center; justify-content:center; padding:20px; -webkit-font-smoothing:antialiased; }
+/* 品牌光晕：与主应用一致，极淡强调色径向渐变让背景更有层次 */
+body::before{ content:""; position:fixed; top:-340px; left:50%; transform:translateX(-50%);
+              width:1240px; height:640px; border-radius:50%; pointer-events:none; z-index:-1;
+              background:radial-gradient(closest-side,var(--accent-soft),transparent 72%); opacity:.6; }
+.card{ background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+       padding:36px 32px; width:360px; max-width:92vw; box-shadow:var(--shadow-md); }
+.brand{ display:flex; align-items:center; gap:12px; margin-bottom:4px; }
+.logo{ width:42px; height:42px; color:#fff; flex:none; border-radius:11px; padding:9px;
+       background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#0ea5e9));
+       box-shadow:0 4px 12px -2px var(--accent-soft); }
+h1{ font-size:18px; margin:0; }
+.sub{ color:var(--muted); font-size:13px; margin:2px 0 22px; }
+.btn{ display:block; width:100%; padding:12px 14px; border:0; border-radius:12px;
+      font-size:15px; font-weight:600; cursor:pointer; transition:.15s; }
+.btn-primary{ background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 55%,#0ea5e9)); color:#fff; }
+.btn-primary:hover{ filter:brightness(1.08); }
+.btn-primary:disabled{ opacity:.7; cursor:default; }
+input{ width:100%; padding:11px 12px; border-radius:12px; border:1px solid var(--border);
+       background:var(--bg2); color:var(--text); font-size:14px; margin-top:8px; }
+input:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.msg{ margin-top:14px; font-size:13px; min-height:18px; color:var(--red); }
+.msg.ok{ color:var(--emerald); }
+.hint{ margin-top:16px; font-size:12px; color:var(--muted); line-height:1.6; }
+.row{ display:none; }
+.spinner{ display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,.4);
+          border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite;
+          vertical-align:-2px; margin-right:6px; }
+@keyframes spin{ to{ transform:rotate(360deg); } }
 </style>
+<script>
+/* 与主应用一致：读取本地保存的主题并应用到 <html data-theme>，登录页背景随当前主题变化（默认浅色清新） */
+(function(){
+  var t = "fresh";
+  try { t = localStorage.getItem("fnmonitor-theme") || "fresh"; } catch(e){}
+  var THEMES = ["dark","light","blue","fresh","green","yellow","cyan"];
+  if (THEMES.indexOf(t) < 0) t = "fresh";
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
 </head>
 <body>
   <div class="card">
-    <div class="brand"><div class="logo">FN</div><div><h1>飞牛监控pro</h1></div></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 13 7 9 11 13 17 7 21 11"/><polyline points="3 19 7 15 11 19 17 13 21 17" opacity=".5"/></svg><div><h1>飞牛监控pro</h1></div></div>
     <div class="sub" id="subtitle">请登录以继续使用</div>
 
     <div class="row" id="pwBox">
