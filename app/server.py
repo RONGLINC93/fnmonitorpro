@@ -1225,6 +1225,157 @@ def _whole_disks():
     return names
 
 
+# 块设备名 -> 硬盘型号 缓存（60 秒；温度传感器面板约 15 秒刷新一轮，
+# 缓存避免每轮重复 spawn lsblk）
+_DISK_MODEL_CACHE = {"ts": 0.0, "models": {}}
+
+
+def _disk_model_map():
+    """块设备名 -> 硬盘型号，如 {"sda": "WDC WD40EFPX-68C6CN0",
+    "nvme0n1": "Samsung SSD 970 EVO Plus 1TB"}。
+
+    lsblk 只读 sysfs，不会唤醒 STANDBY 硬盘（与 collect_disks_detail 同理）；
+    lsblk 缺失或无 MODEL 列时回退 /sys/block/<dev>/device/model
+    （NVMe 的 model 在控制器目录，即 device/../model）。
+    """
+    now = time.time()
+    if _DISK_MODEL_CACHE["models"] and now - _DISK_MODEL_CACHE["ts"] <= 60.0:
+        return _DISK_MODEL_CACHE["models"]
+    models = {}
+    try:
+        out, rc = run_cmd(["lsblk", "-J", "-o", "NAME,MODEL"], timeout=10)
+        if rc == 0 and out.strip():
+            data = json.loads(out)
+            for blk in data.get("blockdevices", []) or []:
+                name = (blk.get("name") or "").strip()
+                model = (blk.get("model") or "").strip()
+                if name and model and name not in models:
+                    models[name] = model
+    except Exception:
+        pass
+    if not models:
+        try:
+            for dev in _whole_disks():
+                if dev in models:
+                    continue
+                for base in ("/sys/block/" + dev + "/device",
+                             "/sys/block/" + dev + "/device/.."):
+                    model = read_text(os.path.join(base, "model")).strip()
+                    if model:
+                        models[dev] = model
+                        break
+        except Exception:
+            pass
+    _DISK_MODEL_CACHE["ts"] = now
+    _DISK_MODEL_CACHE["models"] = models
+    return models
+
+
+def _disk_model_for(dev):
+    """按 sensors 设备名查硬盘型号；查不到返回 ""。
+
+    drivetemp 芯片里的设备名对 NVMe 是控制器名（nvme0），而型号表键是
+    命名空间名（nvme0n1），需前缀兜底匹配（nvme0 -> nvme0n1）。
+    """
+    if not dev:
+        return ""
+    models = _disk_model_map()
+    model = (models.get(dev) or "").strip()
+    if model:
+        return model
+    for name, m in models.items():
+        if m and name.startswith(dev):
+            return m.strip()
+    return ""
+
+
+def _hwmon_disk_temps():
+    """从 /sys/class/hwmon 直接枚举硬盘温度测点（drivetemp / nvme 芯片）。
+
+    sensors -j 里硬盘芯片名形如 drivetemp-scsi-1-0 / nvme-pci-0500：既不含
+    块设备名，测点名也只有 Composite/temp1/(scsi) 这类无信息量的标签，无法
+    据此定位具体硬盘。这里直接枚举 hwmon 设备目录，用两条线索解析硬盘：
+      1. hwmon 设备父目录与 /sys/block/<blk>/device 的真实路径对应（含祖孙
+         级匹配：父目录是 ata 设备/scsi target，块设备挂在其下的 scsi 设备）；
+      2. 父设备自身的 model 属性（SAS/SATA 的 ata/scsi 设备、NVMe 的控制器
+         都有该文件，内容即盘型号）。
+    返回 [{dev, model, label, num, value, max, crit}]，按 (dev, 通道号) 排序。
+    """
+    dev_by_realpath = {}
+    for blk in _whole_disks():
+        try:
+            rp = os.path.realpath("/sys/block/" + blk + "/device")
+        except Exception:
+            rp = ""
+        if rp:
+            dev_by_realpath[rp] = blk
+    out = []
+    base = "/sys/class/hwmon"
+    if not os.path.isdir(base):
+        return out
+    try:
+        hw_list = sorted(os.listdir(base))
+    except Exception:
+        return out
+    for hw in hw_list:
+        hpath = os.path.join(base, hw)
+        if not os.path.isdir(hpath):
+            continue
+        hname = read_text(os.path.join(hpath, "name")).strip().lower()
+        if hname not in ("drivetemp", "nvme"):
+            continue
+        dpath = os.path.join(hpath, "device")
+        rp = os.path.realpath(dpath) if os.path.isdir(dpath) else ""
+        dev = dev_by_realpath.get(rp, "")
+        if not dev and rp:
+            for path, blk in dev_by_realpath.items():
+                if path.startswith(rp + "/") or rp.startswith(path + "/"):
+                    dev = blk
+                    break
+        if not dev and rp:
+            # NVMe：hwmon 父目录是控制器（nvme0），块设备是命名空间（nvme0n1）
+            tail = os.path.basename(rp.rstrip("/"))
+            for blk in dev_by_realpath.values():
+                if blk.startswith(tail):
+                    dev = blk
+                    break
+        model = _disk_model_for(dev) if dev else ""
+        if not model and rp:
+            for base_dir in (rp, os.path.dirname(rp)):
+                model = read_text(os.path.join(base_dir, "model")).strip()
+                if model:
+                    break
+        try:
+            files = os.listdir(hpath)
+        except Exception:
+            continue
+        for f in sorted(files):
+            m = re.match(r"^temp(\d+)_input$", f)
+            if not m:
+                continue
+            num = m.group(1)
+            val = read_int_file(os.path.join(hpath, f))
+            if val <= 0:
+                continue
+            entry_max = read_int_file(os.path.join(hpath, "temp" + num + "_max"))
+            entry_crit = read_int_file(os.path.join(hpath, "temp" + num + "_crit"))
+            if not (0 < entry_max < 150000):
+                entry_max = 0
+            if not (0 < entry_crit < 150000):
+                entry_crit = 0
+            out.append({
+                "dev": dev,
+                "model": model,
+                "label": read_text(os.path.join(hpath, "temp" + num + "_label")).strip(),
+                "num": int(num),
+                "value": round(val / 1000.0, 1),
+                "max": round(entry_max / 1000.0, 1) if entry_max else None,
+                "crit": round(entry_crit / 1000.0, 1) if entry_crit else None,
+            })
+    out.sort(key=lambda e: (e["dev"] or "~", e["num"]))
+    return out
+
+
 def _probe_disk_power_state(name):
     """非唤醒式探测单盘电源状态。
 
@@ -1665,8 +1816,31 @@ def collect_memory():
     return {"items": items, "dual": dual}
 
 
-def _classify_temp(name):
-    """根据传感器名启发式分类温度来源（CPU / 芯片组 / ACPI / 磁盘 / GPU / 主板）。"""
+def _sensor_disk_dev(chip):
+    """从 sensors 芯片名解析硬盘块设备名。
+
+    drivetemp 芯片名形如 drivetemp-sda-i2c-0-0026 / drivetemp-nvme0-pci-0100，
+    第二段即块设备名（sda / nvme0）；nvme-pci-xxxx 类芯片名不含设备名，返回 ""。
+    """
+    parts = str(chip).lower().split("-")
+    if len(parts) > 1 and parts[0] == "drivetemp" and parts[1]:
+        return parts[1]
+    return ""
+
+
+def _classify_temp(name, chip=""):
+    """根据传感器名启发式分类温度来源（CPU / 芯片组 / ACPI / 磁盘 / GPU / 主板）。
+
+    chip 为 sensors 芯片名（如 drivetemp-sda-i2c-0-0026 / nvme-pci-0100 /
+    amdgpu-pci-0a00）：硬盘测点名本身多为 temp1 / Composite，显卡测点名也多为
+    temp1 / edge，不带任何可识别字样，只能依据芯片名判定，否则会被误归入主板。
+    """
+    c = str(chip).lower()
+    if "drivetemp" in c or "hddtemp" in c or c.startswith("nvme"):
+        return "disk"
+    if c.startswith(("amdgpu", "radeon", "nouveau", "nvidia", "i915")) \
+            or "gpu" in c or "vga" in c:
+        return "gpu"
     n = name.lower()
     if any(k in n for k in ("package", "core", "tctl", "tccd", "ccd", "cpu")):
         return "cpu"
@@ -1681,8 +1855,13 @@ def _classify_temp(name):
     return "board"
 
 
-def collect_sensors():
-    """sensors -j 解析：温度分类 / 风扇转速 / 电压（参照网络主流硬件监控面板）。"""
+def collect_sensors(gpu_list=None):
+    """sensors -j 解析：温度分类 / 风扇转速 / 电压（参照网络主流硬件监控面板）。
+
+    gpu_list：外部已采集的显卡列表（collect_gpu() 结果）。显卡温度并入 temps
+    （type="gpu"），多卡每张独立测点、名称用显卡型号；缺省 None 时内部自行
+    采集（/api/sensors 等独立调用场景）。
+    """
     data = {"temps": [], "fans": [], "volts": [], "available": False, "fans_source": ""}
     if not is_linux():
         return data
@@ -1700,6 +1879,10 @@ def collect_sensors():
         if not isinstance(sub, dict):
             continue
         chip_prefix = str(chip).split("-")[0]
+        # 硬盘测点识别：芯片名 drivetemp-<dev>-... 带块设备名；nvme-pci-xxxx
+        # 不带设备名，只能识别为 NVMe 硬盘
+        disk_dev = _sensor_disk_dev(chip)
+        is_disk_chip = bool(disk_dev) or str(chip).lower().startswith("nvme")
         for key, val in sub.items():
             if not isinstance(val, dict):
                 continue
@@ -1729,7 +1912,26 @@ def collect_sensors():
                 if tcrit is not None and (tcrit < 0 or tcrit > 150):
                     tcrit = None
                 # 中文名（温度墙语义）
-                if chip_prefix == "coretemp":
+                if is_disk_chip:
+                    # 硬盘测点：优先展示具体硬盘型号（Samsung SSD 970 EVO Plus 1TB /
+                    # WDC WD40EFPX-68C6CN0），读不到型号才退回“硬盘 sda”这类块设备名；
+                    # 不要把 Composite / temp1 直译成“复合温度”混进主板测点；
+                    # nvme-pci-xxxx 芯片名不含设备名，用 PCI 地址段区分多块 NVMe
+                    nm = ""
+                    if disk_dev:
+                        nm = _disk_model_for(disk_dev)
+                    if not nm:
+                        if disk_dev:
+                            nm = "硬盘 " + disk_dev
+                        else:
+                            tail = "-".join(str(chip).split("-")[1:])
+                            nm = "NVMe 硬盘（" + tail + "）" if tail else "NVMe 硬盘"
+                    m = re.search(r"Sensor\s+(\d+)", str(key))
+                    if m:
+                        nm += " 传感器 " + m.group(1)
+                    elif str(key) not in ("Composite", "temp1"):
+                        nm += " " + str(key)
+                elif chip_prefix == "coretemp":
                     nm = _temp_name_zh(key, chip_prefix)
                 elif chip_prefix == "acpitz":
                     nm = "主板(ACPI)"
@@ -1748,7 +1950,8 @@ def collect_sensors():
                     nm = "主板(SYSTIN)"
                 data["temps"].append({
                     "name": nm, "raw": key, "chip": chip,
-                    "type": _classify_temp(key), "value": round(float(temp_val), 1),
+                    "dev": disk_dev if is_disk_chip else "",
+                    "type": _classify_temp(key, chip), "value": round(float(temp_val), 1),
                     "max": round(float(tmax), 1) if tmax is not None else None,
                     "crit": round(float(tcrit), 1) if tcrit is not None else None,
                 })
@@ -1773,6 +1976,70 @@ def collect_sensors():
             if volt is not None:
                 label = key
                 data["volts"].append({"name": label, "value": round(float(volt) / 1000.0, 3)})
+    # ---- 硬盘温度测点：hwmon 目录直扫优先 ----
+    # sensors -j 的硬盘芯片名（drivetemp-scsi-1-0 / nvme-pci-0500）不含块设备名，
+    # 测点名也只有 Composite/temp1/(scsi) 这类无信息量标签，型号无从查起；改从
+    # /sys/class/hwmon 枚举 drivetemp/nvme 设备，按父设备与 /sys/block 的对应
+    # 关系及 model 属性解析具体硬盘。直扫有结果时替换 sensors 的硬盘测点
+    # （数据同源，均读 hwmon 温度文件）；直扫无结果才保留 sensors 的硬盘测点。
+    try:
+        hwmon_disks = _hwmon_disk_temps()
+    except Exception:
+        hwmon_disks = []
+    if hwmon_disks:
+        data["temps"] = [t for t in data["temps"] if t["type"] != "disk"]
+        for e in hwmon_disks:
+            name = e["model"] or (("硬盘 " + e["dev"]) if e["dev"] else "硬盘")
+            m = re.search(r"Sensor\s+(\d+)", e["label"] or "")
+            if m:
+                name += " 传感器 " + m.group(1)
+            data["temps"].append({
+                "name": name, "raw": e["label"] or ("temp" + str(e["num"])),
+                "chip": "hwmon", "dev": e["dev"],
+                "type": "disk", "value": e["value"],
+                "max": e["max"], "crit": e["crit"],
+            })
+    # ---- 显卡温度并入温度面板（多卡每张独立测点，名称用显卡型号）----
+    # hwmon / sensors 多数不暴露显卡温度（fnOS 默认未装 lm-sensors，独显温度
+    # 只有 nvidia-smi / amdgpu sysfs 读得到），不并入则温度面板看不到显卡测点。
+    # collect_gpu() 每卡返回完整 lspci 型号名，多卡自然按名字区分；两块同型号
+    # 卡在下方去歧义逻辑里追加 PCI 地址。igpu 温度取 CPU 封装近似，名称标注。
+    # sensors 已上报的显卡测点（如 amdgpu hwmon）按 PCI 地址去重，避免同卡双值。
+    if gpu_list is None:
+        try:
+            gpu_list = collect_gpu()
+        except Exception:
+            gpu_list = []
+
+    def _gpu_pci_match(chip, pci_norm):
+        """chip（sensors 芯片名）是否就是 pci_norm 对应的同一张卡。"""
+        if not pci_norm:
+            return False
+        for run in re.findall(r"[0-9a-f]{4,}", str(chip or "").lower()):
+            if run in pci_norm or pci_norm in run:
+                return True
+        return False
+
+    gpu_seen_chips = [str(t.get("chip", "")) for t in data["temps"] if t.get("type") == "gpu"]
+    for g in gpu_list or []:
+        if not isinstance(g, dict):
+            continue
+        tval = g.get("temp")
+        if not isinstance(tval, (int, float)):
+            continue
+        pci = str(g.get("pci") or "")
+        pci_norm = re.sub(r"[^0-9a-f]", "", pci.lower())
+        if pci_norm and any(_gpu_pci_match(c, pci_norm) for c in gpu_seen_chips):
+            continue
+        gpu_seen_chips.append(pci)
+        nm = (g.get("name") or "").strip() or "显卡"
+        if g.get("type") == "igpu":
+            nm += "（核显·近似）"
+        data["temps"].append({
+            "name": nm, "raw": "gpu", "chip": pci or "gpu",
+            "dev": pci, "type": "gpu", "value": round(float(tval), 1),
+            "max": None, "crit": None,
+        })
     # ---- 风扇合并：直接读取内核 /sys/class/hwmon 风扇通道作为权威来源 ----
     # 风扇平均转速原先仅依赖外部命令 sensors -j；fnOS 等精简系统默认未安装
     # lm-sensors（sensors 命令不存在），即使 BIOS 可见转速、内核已驱动风扇芯片，
@@ -1826,6 +2093,17 @@ def collect_sensors():
                 merged_fans.append({"name": ef["name"], "rpm": int(ef["rpm"])})
     data["fans"] = merged_fans
     data["fans_source"] = "+".join(fan_src)
+    # 硬盘 / 显卡测点同名去歧义：同型号多块盘（如两块 WD40EFRX）、同型号多张卡
+    # （如两块 RTX 4070 Ti）名称完全相同，追加设备名（sda / PCI 地址）区分，
+    # 避免面板出现两张一样的卡片
+    name_cnt = {}
+    for t in data["temps"]:
+        if t["type"] in ("disk", "gpu"):
+            name_cnt[t["name"]] = name_cnt.get(t["name"], 0) + 1
+    if any(n > 1 for n in name_cnt.values()):
+        for t in data["temps"]:
+            if t["type"] in ("disk", "gpu") and name_cnt.get(t["name"], 0) > 1 and t.get("dev"):
+                t["name"] = t["name"] + "（" + t["dev"] + "）"
     # 温度按 CPU / 芯片组 / 主板 / ACPI 顺序排列
     order = {"cpu": 0, "pch": 1, "board": 2, "acpi": 3, "disk": 4, "gpu": 5}
     data["temps"].sort(key=lambda t: (order.get(t["type"], 9), t["name"]))
@@ -4372,8 +4650,10 @@ class Collector(threading.Thread):
         snapshot["raidcard"] = self._last_raidcard
 
         # ---- 传感器：温度分类 / 风扇 / 电压（每 15 秒） ----
+        # 显卡温度并入温度面板：复用上面每 10 秒的 GPU 采集缓存（_last_gpu），
+        # 不额外 spawn nvidia-smi；首轮 _last_gpu 为空时 collect_sensors 内部自采
         if now - self._last_sensors_ts >= 15:
-            self._last_sensors = collect_sensors()
+            self._last_sensors = collect_sensors(gpu_list=self._last_gpu or None)
             self._last_sensors_ts = now
         snapshot["sensors"] = self._last_sensors
 

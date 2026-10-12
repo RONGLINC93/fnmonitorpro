@@ -1,14 +1,14 @@
 # 飞牛监控pro fnMonitor
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-2.17.5-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.17.6-blue">
   <img alt="fnOS" src="https://img.shields.io/badge/fnOS-x86%20%7C%20arm64-success">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-orange">
 </p>
 
 飞牛 fnOS 系统监控应用（FPK 原生应用）：实时监控 **CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU**，支持 Docker 容器管理、端口占用、硬盘 SMART、历史趋势与七套主题。**流量统计模块**（整机 / 网卡 / 容器上下行流量、今日 / 本月累计、容器流量排行、CSV 导出）与**功耗统计模块**（实时瓦数 + kWh 耗电量 + 电费估算，无 RAPL 时自动回退 TDP 估算模型，CSV 导出）。纯 Python 标准库 + 单文件前端，**零第三方依赖、完全离线可用**，数据仅保存在本机。
 
-- 当前版本：**v2.17.5**（最新已发布；manifest 开发中版本 2.17.6 见版本历史）
+- 当前版本：**v2.17.6**（最新已发布；manifest 开发中版本 2.17.7 见版本历史）
 - 作者：**RONGLINC93**
 - 原作者：**Misite齊**（@MisiteQ）—— 本项目基于其开源的 fnmonitor 项目修改，致谢原作者贡献
 - 适用平台：fnOS **x86 + arm64**（最低系统版本 0.9.0）
@@ -34,7 +34,7 @@ https://github.com/RONGLINC93/FnDepot
 
 ### 方式二：手动安装 FPK
 
-1. 到 [Releases](https://github.com/RONGLINC93/fnmonitorpro/releases) 按 NAS 架构下载：`fnmonitorpro-2.17.5-x86.fpk`（x86 机型）或 `fnmonitorpro-2.17.5-arm.fpk`（arm64 机型）
+1. 到 [Releases](https://github.com/RONGLINC93/fnmonitorpro/releases) 按 NAS 架构下载：`fnmonitorpro-2.17.6-x86.fpk`（x86 机型）或 `fnmonitorpro-2.17.6-arm.fpk`（arm64 机型）
 2. 飞牛 OS → **应用中心** → 左下角 **手动安装** → 选择 fpk 文件
 3. 安装后从桌面打开 **飞牛监控pro**，或直接访问 `http://<NAS_IP>:8778`
 
@@ -94,6 +94,7 @@ make_icon.py            应用图标生成（不覆盖已有图标）
 
 | 版本 | 内容 |
 |---|---|
+| v2.17.7 | **温度传感器面板新增显卡温度（支持多卡）**：① 「硬件与温度 → 温度传感器」此前只汇总 sensors / hwmon 测点（CPU / 芯片组 / 主板 / ACPI / 硬盘），显卡温度仅显示在「实时功耗与显卡」面板，fnOS 默认未装 lm-sensors 时温度面板完全看不到显卡；现把 collect_gpu() 采集的显卡温度并入温度面板独立「GPU」分组——多张显卡每张一个测点，名称用完整显卡型号（如 NVIDIA Corporation AD104 [GeForce RTX 4070 Ti]），两块同型号卡自动追加 PCI 地址（如（01:00.0））区分；核显温度取 CPU 封装近似值并标注「（核显·近似）」，读不到温度的卡不占位；与 sensors 已上报的显卡测点（amdgpu hwmon 等）按 PCI 地址去重，不会同卡出现两个值。② 修复 sensors 上报的 amdgpu / nouveau / i915 显卡测点被误归类为「主板」：这类测点名只有 temp1 / edge 等无可识别字样，改按芯片名判定归属。③ 采集性能：并入时复用每 10 秒的 GPU 采集缓存，不额外执行 nvidia-smi；温度概览的「GPU 温度」与「全部测点最高」同步覆盖显卡测点。**硬盘温度测点改显具体硬盘型号 + 测点分组显示**：④ 修复硬盘测点名与分类：sensors 的硬盘芯片名（drivetemp-scsi-1-0 / nvme-pci-0500）既不含块设备名，测点名也只有 Composite / temp1 / (scsi) 这类无信息量标签，此前被直译成「复合温度」且误归类为「主板」（NVMe 温度还会拉高「主板温度」概览值）；现改为从 /sys/class/hwmon 枚举 drivetemp / nvme 设备，经 hwmon 父设备与 /sys/block 的真实路径对应（含祖孙级匹配）及父设备 model 属性解析出具体硬盘，测点名直接展示硬盘型号（如 Samsung SSD 970 EVO Plus 1TB / WDC WD40EFRX-68N6ZN0）；NVMe 多传感器追加「传感器 1 / 2」编号，同型号多块盘自动追加块设备名（（sda））区分，解析不到型号时退回「硬盘 sda」；型号表复用 60 秒 lsblk 缓存，不增加采集开销。⑤ 温度测点分组显示：按 CPU / 芯片组 / 主板 / ACPI / 硬盘 / GPU 分组，每组带子标题与测点数，替代原先全部测点平铺；硬盘测点的 max / crit 阈值一并下发，温度墙配色更准确 |
 | v2.17.6 | **修复长时间运行后假死**：① 采集线程单 tick 内串行调用数十个外部命令，`run_cmd` 原用 `subprocess.run` 内置超时——超时只杀直接子进程，孙进程继承 stdout 管道时收尾 `communicate()` 永久阻塞，采集线程卡死、快照停更，HTTP 仍在线但永远返回旧数据，全局面板冻结且无法自愈；现改为独立进程组（start_new_session）+ 超时 `killpg` 整组清除，外部调用严格有界（已实测：旧写法同场景永久挂死，新写法有界返回）。② 新增采集 tick 看门狗：tick 超过 max(3×interval, 60s) 即打印采集线程当前堆栈到服务日志，卡死现场可定位到具体代码行。③ HTTP 层新增 64 并发信号量（超限直接 503）与 30s 慢请求打点，防止异常 / 恶意客户端（IPv6 公网暴露时）把处理线程拖爆拖死整个进程。④ `/api/history/diag` 新增采集健康字段（tick 耗时 / 是否卡死 / 快照年龄 / 线程数），前端顶栏在快照停更超 90s 时红点告警「采集停更 · 疑似卡死」 |
 | v2.17.5 | **登录页全新改版**：内置全部 7 套主题变量并跟随主应用主题（localStorage 同步，默认浅色清新），品牌光晕背景 + SVG 图标，输入框焦点态、按钮加载态与提示文案细节重做，明暗主题自动适配。**新增发版辅助脚本**：`clean_fpk.py`（清理构建产物 fpk）、`sync_version_from_release.py`（从 GitHub Release 同步版本号） |
 | v2.17.4 | **发布流程工具化**（无应用功能变更）：新增 `bump_version.py`（版本号升降）、`changelog.py`（README 版本历史 → manifest changelog 自动同步）、`release.py`（构建 + 更新日志 + 发布一站式）、`ver_menu.py`（版本管理菜单）、`pull.py` / `push.py`（仓库拉取 / 推送）、`lower_version.py`；`build.py` 一次构建同时产出双架构安装包；移除早期 .bat 脚本（发布 / 拉取 / 传送 / 改版本号），改由 Python 脚本统一入口 |

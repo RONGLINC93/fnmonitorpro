@@ -450,6 +450,9 @@ table.listen-tbl td:nth-child(2){max-width:230px;overflow-wrap:break-word;white-
 /* ===== 传感器 / 温度墙 / 功耗 / 内存插槽 / 风扇 ===== */
 .sens-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:11px}
 .sens-title{font-size:12.5px;color:var(--muted);margin:14px 0 0;font-weight:700;display:flex;align-items:center;gap:6px}
+.sens-group{margin-top:12px;min-width:0}
+.sens-group-t{font-size:12px;font-weight:700;color:var(--dim);display:flex;align-items:center;gap:6px;margin:0 0 6px}
+.sens-group-t .sens-count{font-size:11px;font-weight:600;color:var(--muted)}
 .sens-card{padding:13px}
 .sens-card h4{font-size:12.5px;color:var(--muted);margin-bottom:10px;font-weight:700;display:flex;align-items:center;gap:6px}
 .sens-line{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);padding:4px 0;border-top:1px dashed var(--border)}
@@ -459,7 +462,7 @@ table.listen-tbl td:nth-child(2){max-width:230px;overflow-wrap:break-word;white-
 .temp-chip{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;border:1px solid var(--border);color:var(--muted);margin-left:4px}
 .wall-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(126px,1fr));gap:10px;margin-bottom:13px}
 .wall-hero-item{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px;text-align:center}
-.wall-hero-item .wh-label{font-size:11px;color:var(--muted);margin-bottom:6px}
+.wall-hero-item .wh-label{font-size:11px;color:var(--muted);margin-bottom:6px;overflow-wrap:anywhere}
 .wall-hero-item .wh-value{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums}
 .wall-hero-item .wh-value small{font-size:11px;font-weight:600;color:var(--muted)}
 .wall-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
@@ -1654,19 +1657,33 @@ function renderSysExtra(o){
   const sensors = (o && o.sensors) || {};
   const fans = (o && o.fans) || [];
   let h = "";
-  // 温度分类 + 电压（紧接温度概览，温度测点卡片横向平铺，自适应填满整行）
+  // 温度分类 + 电压（紧接温度概览，温度测点按来源分组显示）
   const temps = sensors.temps || [];
   if (temps.length || sensors.available){
     const typeName = {cpu: "CPU", pch: "芯片组", board: "主板", acpi: "ACPI", disk: "硬盘", gpu: "GPU"};
+    const typeIcon = {cpu: "🧠", pch: "🧩", board: "🖥️", acpi: "🌡️", disk: "💾", gpu: "🎮"};
     if (temps.length){
-      h += '<div data-mod="m-sens-temp"><div class="sens-title">🌡️ 温度传感器<button class="mod-hide" data-mod="m-sens-temp" title="隐藏此模块">✕</button></div><div class="wall-grid" style="margin-top:6px">';
-      temps.forEach(t => {
-        const hot = t.value != null && (t.value >= 80);
-        h += '<div class="wall-hero-item"><div class="wh-label">' + esc(t.name) + ' <span class="temp-chip">' + (typeName[t.type] || t.type) + "</span></div>" +
-             '<div class="wh-value" style="' + (hot ? "color:var(--red)" : "") + '">' + (t.value != null ? t.value.toFixed(2) : "--") + "<small>°C</small></div>" +
-             (t.max ? '<div class="wh-label">上限 ' + t.max.toFixed(2) + "°C</div>" : "") + "</div>";
+      // 按测点来源分组（CPU / 芯片组 / 主板 / ACPI / 硬盘 / GPU），每组一个
+      // 子标题 + 自适应卡片网格；后端已按同序排序，未知类型排在最后
+      const groups = {};
+      temps.forEach(t => { const k = t.type || "other"; (groups[k] = groups[k] || []).push(t); });
+      const order = ["cpu", "pch", "board", "acpi", "disk", "gpu"];
+      Object.keys(groups).forEach(k => { if (order.indexOf(k) < 0) order.push(k); });
+      h += '<div data-mod="m-sens-temp"><div class="sens-title">🌡️ 温度传感器<button class="mod-hide" data-mod="m-sens-temp" title="隐藏此模块">✕</button></div>';
+      order.forEach(tp => {
+        const list = groups[tp];
+        if (!list || !list.length) return;
+        h += '<div class="sens-group"><div class="sens-group-t">' + (typeIcon[tp] || "•") + " " + (typeName[tp] || tp) +
+             ' <span class="sens-count">' + list.length + " 个测点</span></div>" + '<div class="wall-grid">';
+        list.forEach(t => {
+          const hot = t.value != null && (t.value >= 80);
+          h += '<div class="wall-hero-item"><div class="wh-label">' + esc(t.name) + "</div>" +
+               '<div class="wh-value" style="' + (hot ? "color:var(--red)" : "") + '">' + (t.value != null ? t.value.toFixed(2) : "--") + "<small>°C</small></div>" +
+               (t.max ? '<div class="wh-label">上限 ' + t.max.toFixed(2) + "°C</div>" : "") + "</div>";
+        });
+        h += "</div></div>";
       });
-      h += "</div></div>";
+      h += "</div>";
     } else h += '<div class="hw-line" style="margin-top:14px"><span>传感器</span><b>未读取到温度数据</b></div>';
     const volts = sensors.volts || [];
     if (volts.length){
