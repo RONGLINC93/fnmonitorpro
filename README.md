@@ -1,14 +1,14 @@
 # 飞牛监控pro fnMonitor
 
 <p>
-  <img alt="Version" src="https://img.shields.io/badge/version-2.17.2-blue">
+  <img alt="Version" src="https://img.shields.io/badge/version-2.17.5-blue">
   <img alt="fnOS" src="https://img.shields.io/badge/fnOS-x86%20%7C%20arm64-success">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-orange">
 </p>
 
 飞牛 fnOS 系统监控应用（FPK 原生应用）：实时监控 **CPU / 内存 / 磁盘 / 网络 / 温度 / 功耗 / GPU**，支持 Docker 容器管理、端口占用、硬盘 SMART、历史趋势与七套主题。**流量统计模块**（整机 / 网卡 / 容器上下行流量、今日 / 本月累计、容器流量排行、CSV 导出）与**功耗统计模块**（实时瓦数 + kWh 耗电量 + 电费估算，无 RAPL 时自动回退 TDP 估算模型，CSV 导出）。纯 Python 标准库 + 单文件前端，**零第三方依赖、完全离线可用**，数据仅保存在本机。
 
-- 当前版本：**v2.17.2**
+- 当前版本：**v2.17.5**（最新已发布；manifest 开发中版本 2.17.6 见版本历史）
 - 作者：**RONGLINC93**
 - 原作者：**Misite齊**（@MisiteQ）—— 本项目基于其开源的 fnmonitor 项目修改，致谢原作者贡献
 - 适用平台：fnOS **x86 + arm64**（最低系统版本 0.9.0）
@@ -34,7 +34,7 @@ https://github.com/RONGLINC93/FnDepot
 
 ### 方式二：手动安装 FPK
 
-1. 到 [Releases](https://github.com/RONGLINC93/fnmonitorpro/releases) 按 NAS 架构下载：`fnmonitorpro-2.17.2-x86.fpk`（x86 机型）或 `fnmonitorpro-2.17.2-arm.fpk`（arm64 机型）
+1. 到 [Releases](https://github.com/RONGLINC93/fnmonitorpro/releases) 按 NAS 架构下载：`fnmonitorpro-2.17.5-x86.fpk`（x86 机型）或 `fnmonitorpro-2.17.5-arm.fpk`（arm64 机型）
 2. 飞牛 OS → **应用中心** → 左下角 **手动安装** → 选择 fpk 文件
 3. 安装后从桌面打开 **飞牛监控pro**，或直接访问 `http://<NAS_IP>:8778`
 
@@ -94,6 +94,10 @@ make_icon.py            应用图标生成（不覆盖已有图标）
 
 | 版本 | 内容 |
 |---|---|
+| v2.17.6 | **修复长时间运行后假死**：① 采集线程单 tick 内串行调用数十个外部命令，`run_cmd` 原用 `subprocess.run` 内置超时——超时只杀直接子进程，孙进程继承 stdout 管道时收尾 `communicate()` 永久阻塞，采集线程卡死、快照停更，HTTP 仍在线但永远返回旧数据，全局面板冻结且无法自愈；现改为独立进程组（start_new_session）+ 超时 `killpg` 整组清除，外部调用严格有界（已实测：旧写法同场景永久挂死，新写法有界返回）。② 新增采集 tick 看门狗：tick 超过 max(3×interval, 60s) 即打印采集线程当前堆栈到服务日志，卡死现场可定位到具体代码行。③ HTTP 层新增 64 并发信号量（超限直接 503）与 30s 慢请求打点，防止异常 / 恶意客户端（IPv6 公网暴露时）把处理线程拖爆拖死整个进程。④ `/api/history/diag` 新增采集健康字段（tick 耗时 / 是否卡死 / 快照年龄 / 线程数），前端顶栏在快照停更超 90s 时红点告警「采集停更 · 疑似卡死」 |
+| v2.17.5 | **登录页全新改版**：内置全部 7 套主题变量并跟随主应用主题（localStorage 同步，默认浅色清新），品牌光晕背景 + SVG 图标，输入框焦点态、按钮加载态与提示文案细节重做，明暗主题自动适配。**新增发版辅助脚本**：`clean_fpk.py`（清理构建产物 fpk）、`sync_version_from_release.py`（从 GitHub Release 同步版本号） |
+| v2.17.4 | **发布流程工具化**（无应用功能变更）：新增 `bump_version.py`（版本号升降）、`changelog.py`（README 版本历史 → manifest changelog 自动同步）、`release.py`（构建 + 更新日志 + 发布一站式）、`ver_menu.py`（版本管理菜单）、`pull.py` / `push.py`（仓库拉取 / 推送）、`lower_version.py`；`build.py` 一次构建同时产出双架构安装包；移除早期 .bat 脚本（发布 / 拉取 / 传送 / 改版本号），改由 Python 脚本统一入口 |
+| v2.17.3 | **移除「飞牛账号授权」登录方式**：登录精简为「应用访问口令」单一方式——删除飞牛账号授权按钮、`/api/auth/fnos` 接口与 fnos-detect 诊断接口，移除 auth_fnos_header / auth_fnos_proxy 配置项及后端加载 / 保存逻辑。**新增开发版标识**：manifest 新增 `version_released` 字段记录已发布版本，当前 version 与之不同即视为开发版，「关于」与页脚显示 DEV 标记并标注已发布版本号 |
 | v2.17.2 | **退出登录移至顶栏右上角**：登录态（当前用户名 + 退出登录）由页脚移到顶栏右上角（全屏 / 刷新 / 主题按钮旁），未登录时自动隐藏、已登录时显示，移动端顶栏换行仍正常；移除页脚中冗余的登录态文本 |
 | v2.17.1 | **修复「飞牛账号授权」登录失败**：飞牛网关注入的当前登录用户经 HTTP 请求头（X-Trim-Username）下发，旧版登录页错误地依赖浏览器端 postMessage / URL 参数获取账号（飞牛并不下发该信息），导致点「使用飞牛账号授权」始终报「未能获取飞牛账号」；现服务端改为信任网关注入的身份头（仅限本机网关回环来源，防止局域网直连端口被伪造头绕过登录）自动建会话，登录页按钮改为由服务端解析身份，并新增 `/api/auth/fnos-detect` 诊断接口便于确认网关是否注入身份头；登录页保证「应用访问口令」（设置 / 登录）入口始终可用，网关会话隐藏无意义的退出按钮（网关每次请求自动重建会话） |
 | v2.17.0 | **更名「飞牛监控pro」**：应用显示名、桌面图标（新增 PRO 角标）、桌面入口、应用 ID（appname → fnmonitorpro）与发布源索引（FnDepot 应用键）统一更名；**默认端口 8777 → 8778**（manifest 服务端口、启动脚本、防火墙放行规则、桌面入口、设置页与安装向导提示同步更新）。**新增风扇温度曲线控制**：可视化曲线编辑器（拖动拐点 / 点击空白加拐点 / 双击删除），支持 CPU / 主板 / 任意硬盘作温度源；后台守护按曲线平滑调速（4 秒周期、4/255 步进）并做最小/最大占空比夹取，内置试算与当前目标占空比实时显示。**风扇控制交互重构**：模式改为下拉选择（BIOS 自动 / 手动 / 温度曲线）+ 统一「保存」按钮（选中不立即生效、点保存才下发）；新增「实时检测」开关（每 2 秒直读 sysfs 高频刷新转速与占空比，绕过采集缓存）；风扇卡片支持五档尺寸（巨大 / 超大 / 大 / 中 / 小）并跨设备同步；风扇名可点击重命名并持久化。**交还 BIOS 升级为三级降级**：优先还原进程接管前的 BIOS 原始档位与占空比 → 芯片专属自动档位 → 全速兜底（对齐 fn-fancontrol restore_channel），并新增「一键交还所有风扇」；新增读取 pwmN_temp_sel，在硬件检测向导展示 BIOS 绑定的温度源与原始档位。**界面细节**：风扇卡片仅标题区可拖拽排序（正文图表拖拽不再冲突）；曲线图与硬件检测弹窗配色改用主题变量，随 7 套主题切换 |

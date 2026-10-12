@@ -2982,7 +2982,15 @@ async function pollOverview(){
     pushLiveTrend(o);
     if (cachedHistory) renderTrends(state.range, (state.range in SPAN_MAP) ? SPAN_MAP[state.range] : 3600);
     $("status-dot").className = "dot";
-    $("status-text").textContent = "正常 · 更新于 " + fmtTime(Date.now()/1000);
+    // 假死检测：快照 ts 明显过期 = 采集线程停更（外部命令卡死 / tick 变慢）。
+    // 此时 HTTP 仍正常返回旧数据，「连接正常」会掩盖问题，这里显式告警
+    const snapAge = (o && o.ts) ? (Date.now() / 1000 - o.ts) : 0;
+    if (snapAge > 90){
+      $("status-dot").className = "dot err";
+      $("status-text").textContent = "采集停更 " + Math.round(snapAge) + "s · 疑似卡死，请查看服务日志";
+    } else {
+      $("status-text").textContent = "正常 · 更新于 " + fmtTime(Date.now()/1000);
+    }
     lastOk = Date.now();
   } catch(e){
     $("status-dot").className = "dot err";

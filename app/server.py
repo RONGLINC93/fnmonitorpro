@@ -112,12 +112,44 @@ def read_int_file(path):
 
 
 def run_cmd(cmd, timeout=10):
-    """执行外部命令，返回 (stdout, returncode)。"""
+    """执行外部命令，返回 (stdout, returncode)。
+
+    必须严格 bounded：subprocess.run 的内置 timeout 只 kill 直接子进程，若其
+    孙进程继承了 stdout/stderr 管道（docker CLI、ss 等都可能 fork 辅助进程），
+    超时后的收尾 communicate() 会永久阻塞——采集线程将卡死在这一行，latest
+    快照停更，整个面板数据冻结（假死）且无法自愈。故自进程组
+    （start_new_session），超时时 killpg 整组清除，再短超时收尾。
+    """
     try:
-        r = subprocess.run(cmd, shell=False, capture_output=True, text=True, timeout=timeout)
-        return r.stdout, r.returncode
+        p = subprocess.Popen(cmd, shell=False, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True,
+                             start_new_session=True)
     except Exception:
         return "", -1
+    try:
+        out, _ = p.communicate(timeout=timeout)
+        return out, p.returncode
+    except subprocess.TimeoutExpired:
+        _kill_process_group(p)
+        return "", -1
+    except Exception:
+        _kill_process_group(p)
+        return "", -1
+
+
+def _kill_process_group(p):
+    """杀掉子进程整个进程组并短超时收尾，回收管道避免僵尸/常驻句柄。"""
+    try:
+        os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+    except Exception:
+        try:
+            p.kill()
+        except Exception:
+            pass
+    try:
+        p.communicate(timeout=5)
+    except Exception:
+        pass
 
 
 def is_linux():
@@ -3894,6 +3926,13 @@ class Collector(threading.Thread):
         # 数据盘休眠期间暂存未落盘的历史采样行（见 _tick 休眠保护）
         self._pending_rows = []
         self._cfg_mtime = 0.0
+        # ---- tick 看门狗状态：外部命令卡死时 latest 停更、面板假死，
+        # 靠这些字段把「卡了多久/是否在跑」暴露到日志与 /api/history/diag ----
+        self._tick_in_progress = False
+        self._tick_started = 0.0
+        self._last_tick_dur = 0.0
+        self._tick_stalls = 0          # tick 超阈值未完成次数（疑似卡死）
+        self._thread_ident = None      # 采集线程 ident（看门狗取堆栈用）
         # 曲线控制：每通道上次实际写入的占空比（0-255），用于平滑/迟滞，避免频繁抖动
         self._fan_curve_last = {}
 
@@ -3930,20 +3969,79 @@ class Collector(threading.Thread):
 
     def run(self):
         self.db._init()
+        self._thread_ident = self.ident
         # 风扇曲线控制：独立后台循环，按温度插值周期写 PWM（与采集周期解耦，响应更及时）
         try:
             threading.Thread(target=self._fan_curve_loop, daemon=True).start()
         except Exception:
             pass
+        # tick 看门狗：采集整体卡死（外部命令不返回）时打印采集线程堆栈，
+        # 否则 latest 停更、面板假死而服务日志毫无痕迹，问题永远无法定位
         try:
-            self._tick()  # 启动后立即采集一次，避免首屏无数据
+            threading.Thread(target=self._tick_watchdog, daemon=True).start()
+        except Exception:
+            pass
+        try:
+            self._tick_timed()  # 启动后立即采集一次，避免首屏无数据
         except Exception:
             pass
         while not self._stop.wait(self.config.get("interval", 10)):
             try:
-                self._tick()
+                self._tick_timed()
             except Exception:
                 pass
+
+    def _tick_timed(self):
+        """执行一次采集并计时（看门狗与 /api/history/diag 读取这些状态）。"""
+        self._tick_in_progress = True
+        self._tick_started = time.time()
+        try:
+            self._tick()
+        finally:
+            self._last_tick_dur = time.time() - self._tick_started
+            self._tick_in_progress = False
+
+    def _tick_watchdog(self):
+        """采集 tick 看门狗：tick 进行中且超过 max(3*interval, 60s) 视为疑似卡死，
+        打印采集线程当前堆栈到服务日志（fnOS 服务日志可见），便于定位卡在哪一行。"""
+        while not self._stop.wait(15):
+            if not self._tick_in_progress:
+                continue
+            try:
+                interval = float(self.config.get("interval", 10) or 10)
+            except Exception:
+                interval = 10.0
+            limit = max(3.0 * interval, 60.0)
+            age = time.time() - self._tick_started
+            if age < limit:
+                continue
+            self._tick_stalls += 1
+            print("[fnmonitorpro] 采集 tick 疑似卡死：已进行 %.0fs（间隔 %ss，第 %d 次），采集线程当前堆栈："
+                  % (age, interval, self._tick_stalls))
+            try:
+                frame = sys._current_frames().get(self._thread_ident)
+                if frame:
+                    print("".join(traceback.format_stack(frame)))
+                else:
+                    print("  (采集线程帧不可用)")
+            except Exception:
+                pass
+
+    def health(self):
+        """采集健康状态（供 /api/history/diag）：tick 是否卡死、耗时、快照年龄。"""
+        now = time.time()
+        try:
+            snap_ts = float((self.latest or {}).get("ts") or 0.0)
+        except Exception:
+            snap_ts = 0.0
+        return {
+            "interval": self.config.get("interval", 10),
+            "last_tick_dur": round(self._last_tick_dur, 2),
+            "tick_in_progress": bool(self._tick_in_progress),
+            "tick_age": round(now - self._tick_started, 1) if self._tick_in_progress else 0.0,
+            "snapshot_age": round(now - snap_ts, 1) if snap_ts else None,
+            "tick_stalls": self._tick_stalls,
+        }
 
     def _fan_curve_loop(self):
         """曲线控制后台循环：每 FAN_CURVE_INTERVAL 秒按当前温度评估并应用各曲线通道。"""
@@ -4618,6 +4716,10 @@ class MonitorApp:
         self.www_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "www")
         self.db_path = os.path.join(data_dir, "monitor.db")
         self._weather_cache = None
+        # HTTP 并发上限：ThreadingHTTPServer 每连接一线程且无总量限制，异常/恶意
+        # 客户端（IPv6 公网暴露时）把线程拖爆后整个进程僵死（假死且不可恢复）。
+        # 超出上限直接 503，保护已有连接与采集线程。
+        self._http_slots = threading.BoundedSemaphore(64)
         # ---- API 响应缓存：多客户端轮询时复用，避免重复查库 / 序列化（CPU 优化核心之一） ----
         self._overview_bytes = b""
         self._overview_ts = 0.0
@@ -4754,17 +4856,42 @@ class MonitorApp:
             protocol_version = "HTTP/1.1"
             timeout = 65
 
-            def do_GET(self):
-                try:
-                    self._handle()
-                except (BrokenPipeError, ConnectionResetError):
-                    pass
-                except Exception:
-                    traceback.print_exc()
+            # 统一入口：并发上限 + 慢请求日志。ThreadingHTTPServer 每连接一线程
+            # 且无总量限制，线程被拖爆后进程僵死（假死），超限直接 503 拒绝。
+            def _dispatch(self, handler):
+                if not app._http_slots.acquire(blocking=False):
                     try:
-                        self.send_error(500)
+                        self._send_status_json(503, {"ok": False, "error": "服务器繁忙，请稍后重试"})
                     except Exception:
                         pass
+                    return
+                t0 = time.time()
+                try:
+                    try:
+                        handler()
+                    except (BrokenPipeError, ConnectionResetError):
+                        pass
+                    except Exception:
+                        traceback.print_exc()
+                        try:
+                            self.send_error(500)
+                        except Exception:
+                            pass
+                finally:
+                    app._http_slots.release()
+                    dur = time.time() - t0
+                    if dur > 30:
+                        # 慢请求打点：定位长时间占用处理线程的操作（外网等待/大盘遍历等）
+                        try:
+                            print("[fnmonitorpro] 慢请求 %.1fs：%s %s" % (dur, self.command, self.path))
+                        except Exception:
+                            pass
+
+            def do_GET(self):
+                self._dispatch(self._handle)
+
+            def do_POST(self):
+                self._dispatch(self._handle_post)
 
             def _handle(self):
                 parsed = urlparse(self.path)
@@ -4937,18 +5064,6 @@ class MonitorApp:
                                        "fnmonitorpro_history_%s.csv" % time.strftime("%Y%m%d_%H%M%S"))
                     return
                 self.send_error(404, "Not Found")
-
-            def do_POST(self):
-                try:
-                    self._handle_post()
-                except (BrokenPipeError, ConnectionResetError):
-                    pass
-                except Exception:
-                    traceback.print_exc()
-                    try:
-                        self.send_error(500)
-                    except Exception:
-                        pass
 
             def _handle_post(self):
                 parsed = urlparse(self.path)
@@ -5300,6 +5415,13 @@ class MonitorApp:
         except Exception as e:
             info["db_error"] = str(e)
         info["snapshot_ts"] = self.collector.get_snapshot().get("ts")
+        # 采集健康：latest 停更（采集线程卡死/变慢）时前端据此提示「假死」，
+        # tick_stalls>0 说明看门狗已捕获到卡死现场（堆栈见服务日志）
+        try:
+            info["collector"] = self.collector.health()
+        except Exception:
+            pass
+        info["threads"] = threading.active_count()
         return info
 
     def api_net_history(self, range_):
