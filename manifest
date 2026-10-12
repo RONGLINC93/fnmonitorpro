@@ -1,6 +1,6 @@
 appname=fnmonitorpro
-version=2.17.6
-version_released=2.17.5
+version=2.17.7
+version_released=2.17.6
 display_name=飞牛监控pro
 desc="""<b>fnOS 系统监控面板</b>：实时监控 CPU、内存、磁盘、网络、温度、功耗与 GPU，Docker 容器资源占用，端口占用与内置应用统计，支持历史趋势记录与数据持久化。<br><br>🏠 总览仪表盘（系统资源 + 硬盘 + 趋势合并一页）| 🐳 Docker · 端口 | ⚙️ 设置"""
 platform=x86
@@ -14,4 +14,4 @@ desktop_applaunchname=fnmonitorpro.Application
 service_port=8778
 checkport=true
 disable_authorization_path=false
-changelog=
+changelog=v2.17.6<br><b>修复长时间运行后假死</b>：① 采集线程单 tick 内串行调用数十个外部命令，`run_cmd` 原用 `subprocess.run` 内置超时——超时只杀直接子进程，孙进程继承 stdout 管道时收尾 `communicate()` 永久阻塞，采集线程卡死、快照停更，HTTP 仍在线但永远返回旧数据，全局面板冻结且无法自愈；现改为独立进程组（start_new_session）+ 超时 `killpg` 整组清除，外部调用严格有界（已实测：旧写法同场景永久挂死，新写法有界返回）。② 新增采集 tick 看门狗：tick 超过 max(3×interval, 60s) 即打印采集线程当前堆栈到服务日志，卡死现场可定位到具体代码行。③ HTTP 层新增 64 并发信号量（超限直接 503）与 30s 慢请求打点，防止异常 / 恶意客户端（IPv6 公网暴露时）把处理线程拖爆拖死整个进程。④ `/api/history/diag` 新增采集健康字段（tick 耗时 / 是否卡死 / 快照年龄 / 线程数），前端顶栏在快照停更超 90s 时红点告警「采集停更 · 疑似卡死」
