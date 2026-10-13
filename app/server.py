@@ -6339,29 +6339,39 @@ class MonitorApp:
                         color, al.get("item", ""), al.get("value", "--"), al.get("threshold", ""))
             else:
                 alerts_html = '<div style="color:#10b981">✓ 当前无活动告警</div>'
-            html = """<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">
-<title>飞牛监控pro 健康报告</title><style>
-body{font-family:system-ui,'PingFang SC',sans-serif;background:#f1f5f9;margin:0;padding:24px;color:#0f172a}
-.card{background:#fff;border-radius:16px;padding:24px;margin:16px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;color:#334155;margin:0 0 12px}
-table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e2e8f0}
-th{color:#64748b;font-weight:600;font-size:13px}.meta{color:#94a3b8;font-size:13px}
-.badge{display:inline-block;background:#ecfdf5;color:#059669;border-radius:999px;padding:2px 10px;font-size:12px}
-</style></head><body>
-<h1>飞牛监控pro · 健康报告</h1><div class="meta">生成时间：%(t)s ｜ 版本 v%(v)s</div>
-<div class="card"><h2>告警摘要</h2>%(alerts)s</div>
-<div class="card"><h2>指标统计（最近 7 天）</h2>
-<table><tr><th>指标</th><th>平均</th><th>最大</th><th>最近</th><th>样本数</th></tr>%(rows)s</table></div>
-</body></html>""" % {
-                "t": data["generated_at"], "v": VERSION,
-                "alerts": alerts_html, "rows": rows_html,
-            }
+            # 用 .replace() 注入变量：避免 CSS 中的字面量 %（如 width:100%）被当成格式符，
+            # 也避免 CSS 花括号与 str.format 冲突；比 % / .format 更鲁棒。
+            html = (
+                "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
+                "<title>飞牛监控pro 健康报告</title><style>"
+                "body{font-family:system-ui,'PingFang SC',sans-serif;background:#f1f5f9;margin:0;padding:24px;color:#0f172a}"
+                ".card{background:#fff;border-radius:16px;padding:24px;margin:16px 0;box-shadow:0 1px 3px rgba(0,0,0,.08)}"
+                "h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;color:#334155;margin:0 0 12px}"
+                "table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e2e8f0}"
+                "th{color:#64748b;font-weight:600;font-size:13px}.meta{color:#94a3b8;font-size:13px}"
+                ".badge{display:inline-block;background:#ecfdf5;color:#059669;border-radius:999px;padding:2px 10px;font-size:12px}"
+                "</style></head><body>"
+                "<h1>飞牛监控pro · 健康报告</h1><div class=\"meta\">生成时间：__T__ ｜ 版本 v__V__</div>"
+                "<div class=\"card\"><h2>告警摘要</h2>__ALERTS__</div>"
+                "<div class=\"card\"><h2>指标统计（最近 7 天）</h2>"
+                "<table><tr><th>指标</th><th>平均</th><th>最大</th><th>最近</th><th>样本数</th></tr>__ROWS__</table></div>"
+                "</body></html>"
+            )
+            html = (html
+                    .replace("__T__", data["generated_at"])
+                    .replace("__V__", str(VERSION))
+                    .replace("__ALERTS__", alerts_html)
+                    .replace("__ROWS__", rows_html))
             return html.encode("utf-8")
         except Exception:
-            traceback.print_exc()
+            tb = traceback.format_exc()
+            print(tb)
+            safe = tb.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             return ("<html><body><h2>报告生成失败</h2>"
-                    "<p>生成健康报告时发生错误，请查看服务日志（journalctl / 应用日志）中的异常堆栈。</p>"
-                    "</body></html>").encode("utf-8")
+                    "<p>生成健康报告时发生错误：</p>"
+                    "<pre style='white-space:pre-wrap;font-size:12px'>%s</pre>"
+                    "<p>请把以上异常信息反馈给开发者以便定位。</p>"
+                    "</body></html>" % safe).encode("utf-8")
 
     def api_fan_set(self, data):
         """风扇控制 / 硬件检测与初始化向导。
