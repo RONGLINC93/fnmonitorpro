@@ -141,6 +141,30 @@ def bump_manifest_version(ver):
     return False
 
 
+def push_branch():
+    """发布完成后把当前分支推送到 origin（版本号自增等未提交改动先提交）。"""
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            text=True).stdout.strip()
+    if not branch or branch == "HEAD":
+        print("[警告] 无法获取当前分支，跳过推送")
+        return False
+    # 版本号自增等未提交改动先提交，避免漏推（仅提交 manifest，避免误带构建产物）
+    st = subprocess.run(["git", "status", "--porcelain"],
+                        stdout=subprocess.PIPE, text=True).stdout.strip()
+    if st:
+        print("[信息] 检测到未提交改动，先提交（manifest 版本号自增）再推送")
+        run(["git", "add", "manifest"])
+        run(["git", "commit", "-m", "chore: 发布后版本号自增"])
+    auth, _ = git_auth_args()
+    rc = run(["git"] + auth + ["push", "origin", branch])
+    if rc == 0:
+        print("[完成] 分支 %s 已推送至 origin" % branch)
+        return True
+    print("[警告] 分支 %s 推送失败（请检查网络 / 凭据 / 远程权限）" % branch)
+    return False
+
+
 def main():
     os.chdir(ROOT)
     ver = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -239,6 +263,7 @@ def main():
     if rel_rc == 0:
         print("[成功] v%s 发布完成：标签 + Release + 安装包均已就绪" % ver)
         bump_manifest_version(ver)
+        push_branch()
     else:
         print("[未完成] 仅完成本地构建")
         print("        标签 v%s 已推送" % ver if rc == 0 else "        标签未推送成功")
